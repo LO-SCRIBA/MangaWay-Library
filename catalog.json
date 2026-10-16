@@ -1,14 +1,8 @@
 [
   {
-    "title": "Naruto - Capitolo 01",
-    "url": "https://raw.githubusercontent.com/LO-SCRIBA/MangaWay-Library/main/catalog.json"
-  },
-  {
-    "title": "One Piece - Capitolo 01",
-    "url": "https://raw.githubusercontent.com/LO-SCRIBA/MangaWay-Library/main/catalog.json"
-  },
-  {
-    "title": "Bleach - Capitolo 01",
-    "url": "https://raw.githubusercontent.com/LO-SCRIBA/MangaWay-Library/main/catalog.json"
+    "titolo": "Manga Test Volume 1",
+    "capitolo": "01",
+    "url": "https://githubusercontent.com",
+    "nome_file": "manga_test.cbz"
   }
 ]
