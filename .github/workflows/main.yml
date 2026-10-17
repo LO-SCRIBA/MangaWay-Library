@@ -23,21 +23,20 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Basic Graphics Dependencies
+    - name: Install Graphic Dependencies
       run: |
         pip install requests Pillow
 
-    - name: Run MangaWay HTTP Compiler
-      env:
-        IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
-        IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+    - name: Run MangaWay Compiler
       run: |
         python mangaway_bot.py 2>&1
 
-    - name: Commit and Push Updated catalog.json
+    - name: Commit and Push All Manga Files to Repository
       run: |
         git config --global user.name "MangaWay-Bot"
         git config --global user.email "bot@mangaway.store"
-        git add catalog.json
-        git commit -m "Auto-Update: New manga chapters added by LO-SCRIBA Bot" || echo "No changes to commit"
+        # Aggiunge il catalogo, i file dei manga .cbz e le copertine reali
+        git add catalog.json *.cbz *_cover.jpg || echo "No files found"
+        git commit -m "Auto-Update: Real manga chapters added by LO-SCRIBA Bot" || echo "No changes to commit"
         git push origin main || git push origin master
+
