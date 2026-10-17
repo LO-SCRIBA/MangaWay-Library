@@ -1,107 +1,109 @@
 import os
 import json
-import zipfile
 import requests
-from PIL import Image, ImageDraw
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def main():
-    print("[*] Avvio MangaWay Real Manga Compiler...")
-    
-    repo_name = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay-Library')
-    
-    manga_reali = [
-        {
-            "title": "One Piece - Chapter 1",
-            "id": "one-piece-ch1",
-            "cover_url": "https://wikimedia.org",
-            "pagine": [
-                "https://wikimedia.org",
-                "https://wikimedia.org"
-            ]
-        },
-        {
-            "title": "Naruto - Chapter 1",
-            "id": "naruto-ch1",
-            "cover_url": "https://wikimedia.org",
-            "pagine": [
-                "https://wikimedia.org",
-                "https://wikimedia.org"
-            ]
-        }
-    ]
+    print("[*] Avvio MangaWay Internet Archive Cloud Scanner...")
     
     catalogo_finale = []
-
-    for manga in manga_reali:
-        print(f"[*] Elaborazione reale per: {manga['title']}")
+    
+    # 🔍 Parole chiave dei manga reali da cercare direttamente su Internet Archive
+    manga_da_cercare = [
+        "One Piece Digital Colored Comics",
+        "Naruto digital colored comics",
+        "Chainsaw Man manga"
+    ]
+    
+    headers = {"User-Agent": "MangaWayStoreBot/1.0 (Nintendo 3DS Homebrew Project)"}
+    
+    for query in manga_target:
+        print(f"[*] Ricerca in corso su Internet Archive per: {query}")
         
-        nome_copertina = f"{manga['id']}_cover.jpg"
-        nome_cbz = f"{manga['id']}.cbz"
-        cov_ok = False
+        # Chiamata all'API di ricerca di Internet Archive (Advanced Search)
+        url_ricerca = "https://archive.org"
+        parametri = {
+            "q": f"title:({query}) AND format:(Archive BitTorrent)", # Filtra solo elementi con file scaricabili
+            "fl[]": "identifier,title,description",
+            "sort[]": "downloads desc", # Prende i più scaricati/affidabili
+            "rows": "2",
+            "output": "json"
+        }
         
-        # 1. Scarica la copertina vera del manga
         try:
-            cov_data = requests.get(manga["cover_url"], timeout=15).content
-            with open("temp_cov.jpg", "wb") as f: f.write(cov_data)
-            with Image.open("temp_cov.jpg") as img:
-                if img.mode != 'RGB': img = img.convert('RGB')
-                if img.height > 1024:
-                    img = img.resize((int(float(img.width) * (1024 / float(img.height))), 1024), Image.Resampling.LANCZOS)
-                img.save(nome_copertina, "JPEG", quality=75)
-            os.remove("temp_cov.jpg")
-            cov_ok = True
-            print(f"[+] Copertina scaricata con successo per {manga['title']}")
+            res = requests.get(url_ricerca, params=parametri, headers=headers, timeout=15).json()
+            items = res.get("response", {}).get("docs", [])
+            
+            for item in items:
+                id_item = item["identifier"]
+                titolo = item["title"]
+                
+                # Chiediamo la lista dei file interni di questo specifico archivio
+                url_files = f"https://archive.org{id_item}"
+                file_res = requests.get(url_files, headers=headers, timeout=15).json()
+                
+                file_lista = file_res.get("files", [])
+                
+                nome_cbz = ""
+                nome_copertina = ""
+                
+                # Cerchiamo il file .cbz e l'immagine della copertina originale
+                for f in file_lista:
+                    nome_f = f["name"]
+                    if nome_f.lower().endswith(".cbz") and not nome_cbz:
+                        nome_cbz = nome_f
+                    if nome_f.lower().endswith((".jpg", ".jpeg", ".png")) and "cover" in nome_f.lower() and not nome_copertina:
+                        nome_copertina = nome_f
+                
+                # Se non trova una foto con la parola "cover", prende la prima immagine disponibile nell'archivio
+                if not nome_copertina:
+                    for f in file_lista:
+                        nome_f = f["name"]
+                        if nome_f.lower().endswith((".jpg", ".jpeg")):
+                            nome_copertina = nome_f
+                            break
+                
+                # Se abbiamo trovato almeno il file del manga .cbz, lo aggiungiamo al catalogo del 3DS
+                if nome_cbz:
+                    # Genera i link di Direct Download ufficiali stabili di Internet Archive
+                    url_manga_diretto = f"https://archive.org{id_item}/{nome_cbz}"
+                    url_copertina_diretta = f"https://archive.org{id_item}/{nome_copertina}" if nome_copertina else ""
+                    
+                    # Tagliamo titoli troppo lunghi per lo schermo del 3DS
+                    titolo_3ds = titolo if len(titolo) < 40 else titolo[:37] + "..."
+                    
+                    catalogo_finale.append({
+                        "title": titolo_3ds,
+                        "cover_url": url_copertina_diretta,
+                        "download_url": url_manga_diretto
+                    })
+                    print(f"[🎉] Trovato e aggiunto: {titolo_3ds}")
+                    
         except Exception as e:
-            print(f"[-] Impossibile scaricare copertina web ({e}). Genero copertina autonoma...")
-            # 🔥 PARACADUTE: Se il link web fallisce, disegna da solo la copertina colorata per non far crashare Git
-            img = Image.new('RGB', (600, 1024), color = (0, 76, 153))
-            d = ImageDraw.Draw(img)
-            d.rectangle([(0, 0), (600, 60)], fill=(255, 128, 0))
-            img.save(nome_copertina, "JPEG", quality=75)
-            cov_ok = True
+            print(f"[-] Errore durante la ricerca di {query}: {e}")
 
-        # 2. Scarica le pagine e compila il file .cbz
-        temp_zip = nome_cbz.replace(".cbz", ".zip")
-        pagine_ok = 0
-        with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as cbz:
-            for i, url_pag in enumerate(manga["pagine"]):
-                try:
-                    img_data = requests.get(url_pag, timeout=15).content
-                    nome_temp_p = f"temp_p_{i}.png"
-                    with open(nome_temp_p, "wb") as f: f.write(img_data)
-                    
-                    with Image.open(nome_temp_p) as img:
-                        if img.mode != 'RGB': img = img.convert('RGB')
-                        if img.height > 1024:
-                            img = img.resize((int(float(img.width) * (1024 / float(img.height))), 1024), Image.Resampling.LANCZOS)
-                        nome_pag_3ds = f"page_{i:03d}.jpg"
-                        img.save(nome_pag_3ds, "JPEG", quality=75)
-                        cbz.write(nome_pag_3ds, nome_pag_3ds)
-                        os.remove(nome_pag_3ds)
-                    os.remove(nome_temp_p)
-                    pagine_ok += 1
-                except:
-                    pass
-                    
-        if pagine_ok > 0 and os.path.exists(temp_zip):
-            os.rename(temp_zip, nome_cbz)
-            
-            url_copertina_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_copertina}" if cov_ok else ""
-            url_manga_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_cbz}"
-            
-            catalogo_finale.append({
-                "title": manga["title"],
-                "cover_url": url_copertina_3ds,
-                "download_url": url_manga_3ds
-            })
-            print(f"[✔] Compilato e pronto: {manga['title']}")
-        else:
-            if os.path.exists(temp_zip): os.remove(temp_zip)
+    # Se la ricerca fallisce del tutto, inseriamo due record di backup scritti bene con veri file IA
+    if not catalogo_finale:
+        print("[!] Nessun file trovato. Attivazione canali stabili pre-configurati...")
+        catalogo_finale = [
+            {
+                "title": "One Piece - Vol.1 (Manga)",
+                "cover_url": "https://archive.orgmanga_One_Piece_v01-20/%21cover.jpg",
+                "download_url": "https://archive.orgmanga_One_Piece_v01-20/One_Piece_v01.cbz"
+            },
+            {
+                "title": "Naruto - Vol.1 (Manga)",
+                "cover_url": "https://archive.orgmanga_Naruto_v01-10/%21cover.jpg",
+                "download_url": "https://archive.orgmanga_Naruto_v01-10/Naruto_v01.cbz"
+            }
+        ]
 
-    # Scrive il catalogo finale
+    # Salva il catalogo finale su GitHub
     with open("catalog.json", "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
-    print("[✔] catalog.json generato con successo.")
+    print("[✔] catalog.json compilato con successo sfruttando Internet Archive Cloud.")
 
 if __name__ == "__main__":
     main()
