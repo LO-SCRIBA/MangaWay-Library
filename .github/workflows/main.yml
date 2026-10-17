@@ -35,7 +35,11 @@ jobs:
       run: |
         git config --global user.name "MangaWay-Bot"
         git config --global user.email "bot@mangaway.store"
-        # Rimuove la vecchia cache locale e aggiunge i nuovi file compilati dei manga veri
-        git add catalog.json *.cbz *_cover.jpg
+        
+        # Aggiungiamo i file uno alla volta in modo sicuro così Git non andrà mai in crash se uno manca
+        git add catalog.json
+        git add *.cbz || echo "Nessun file CBZ trovato"
+        git add *_cover.jpg || echo "Nessuna copertina JPG trovata"
+        
         git commit -m "Auto-Update: Real manga chapters added by LO-SCRIBA Bot" || echo "No changes to commit"
         git push origin main || git push origin master
