@@ -5,7 +5,7 @@ from PIL import Image
 import urllib3
 import json as python_json
 
-# Silenziamo gli avvisi di sicurezza SSL sul server virtuale
+# Silenziamo gli avvisi di sicurezza SSL sul server virtuale di GitHub
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
@@ -34,7 +34,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         print("[-] Error: Manga not found on MangaDex.")
         return
         
-    # Estrazione corretta dei dati dall'array dei risultati
+    # Estrazione corretta dei dati dall'array di MangaDex
     manga_struttura = data_ricerca["data"][0] 
     manga_id = manga_struttura["id"]
     titolo_reale = manga_struttura["attributes"]["title"].get("en", nome_manga)
@@ -113,7 +113,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         os.rename(nome_zip_temp, nome_output_cbz)
         print(f"\n[🎉] SUCCESS! File compiled successfully: {nome_output_cbz}")
         
-        # 🤖 RECUPERO AUTOMATICO UTENTE E REPO: Legge i dati reali del tuo account direttamente dal server
+        # Recupera in automatico utente e repo del tuo profilo per i link RAW
         repo_ambiente = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay')
         
         blocco_manga = {
@@ -122,10 +122,10 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
             "filename": nome_output_cbz
         }
         
-        # Scrive o sovrascrive il catalog.json locale
+        # Aggiorna il catalogo scrivendo l'array JSON
         with open("catalog.json", "w") as f_cat:
             python_json.dump([blocco_manga], f_cat, indent=2)
         print("[+] catalog.json compiled and linked successfully!")
 
-# Avvia l'elaborazione automatica
+# Avvia l'elaborazione del capitolo 1 di My Dress-Up Darling
 cerca_e_scarica_capitolo_3ds("My Dress-Up Darling", 1, lingua="en")
