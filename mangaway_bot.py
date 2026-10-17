@@ -5,12 +5,12 @@ from PIL import Image
 import urllib3
 import json as python_json
 
-# Silenziamo gli avvisi di sicurezza SSL sul server
+# Silenziamo gli avvisi di sicurezza SSL sul server virtuale
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
     """
-    Cerca un manga su MangaDex, scarica il capitolo, ridimensiona le pagine per il 3DS
+    Cerca un manga su MangaDex, scarica il capitolo, ridimensiona le immagini per il 3DS
     e compila il file .cbz aggiornando automaticamente il catalogo locale.
     """
     print(f"[*] Searching for '{nome_manga}' on MangaDex...")
@@ -20,7 +20,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         "Accept": "application/json"
     }
     
-    # 1. Cerca il Manga
+    # 1. Cerca il Manga su MangaDex
     url_ricerca = "https://mangadex.org"
     params_ricerca = {"title": nome_manga, "limit": 1}
     
@@ -34,7 +34,8 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         print("[-] Error: Manga not found on MangaDex.")
         return
         
-    manga_struttura = data_ricerca["data"][0] # Corretto l'indice dell'array
+    # Estrazione corretta dei dati dall'array dei risultati
+    manga_struttura = data_ricerca["data"][0] 
     manga_id = manga_struttura["id"]
     titolo_reale = manga_struttura["attributes"]["title"].get("en", nome_manga)
     print(f"[+] Found: {titolo_reale} (ID: {manga_id})")
@@ -53,7 +54,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         print(f"[-] Error: Chapter {numero_capitolo} in language '{lingua}' not found.")
         return
         
-    chapter_struttura = r_cap.json()["data"][0] # Corretto l'indice dell'array
+    chapter_struttura = r_cap.json()["data"][0] 
     chapter_id = chapter_struttura["id"]
     print(f"[+] Found Chapter ID: {chapter_id}")
 
@@ -112,17 +113,19 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         os.rename(nome_zip_temp, nome_output_cbz)
         print(f"\n[🎉] SUCCESS! File compiled successfully: {nome_output_cbz}")
         
-        # Genera il record del singolo manga
+        # 🤖 RECUPERO AUTOMATICO UTENTE E REPO: Legge i dati reali del tuo account direttamente dal server
+        repo_ambiente = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay')
+        
         blocco_manga = {
             "titolo": f"{titolo_reale} - Chapter {numero_capitolo}",
-            "url_cbz": f"https://githubusercontent.com{nome_output_cbz}",
+            "url_cbz": f"https://githubusercontent.com{repo_ambiente}/main/{nome_output_cbz}",
             "filename": nome_output_cbz
         }
         
-        # Scrive il file catalog.json in modo pulito e sicuro
+        # Scrive o sovrascrive il catalog.json locale
         with open("catalog.json", "w") as f_cat:
             python_json.dump([blocco_manga], f_cat, indent=2)
-        print("[+] catalog.json compiled successfully!")
+        print("[+] catalog.json compiled and linked successfully!")
 
-# Inizializza lo scraping di test
+# Avvia l'elaborazione automatica
 cerca_e_scarica_capitolo_3ds("My Dress-Up Darling", 1, lingua="en")
