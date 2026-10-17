@@ -7,10 +7,8 @@ from PIL import Image, ImageDraw
 def main():
     print("[*] Avvio MangaWay Real Manga Compiler...")
     
-    # Recupera in automatico il nome del tuo account e del tuo repository
     repo_name = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay-Library')
     
-    # 📚 ELENCO DEI MANGA VERI E DEI CAPITOLI REALI
     manga_reali = [
         {
             "title": "One Piece - Chapter 1",
@@ -41,7 +39,7 @@ def main():
         nome_cbz = f"{manga['id']}.cbz"
         cov_ok = False
         
-        # 1. Scarica e ottimizza la copertina vera del manga per il 3DS
+        # 1. Scarica la copertina vera del manga
         try:
             cov_data = requests.get(manga["cover_url"], timeout=15).content
             with open("temp_cov.jpg", "wb") as f: f.write(cov_data)
@@ -52,10 +50,17 @@ def main():
                 img.save(nome_copertina, "JPEG", quality=75)
             os.remove("temp_cov.jpg")
             cov_ok = True
-        except:
-            cov_ok = False
+            print(f"[+] Copertina scaricata con successo per {manga['title']}")
+        except Exception as e:
+            print(f"[-] Impossibile scaricare copertina web ({e}). Genero copertina autonoma...")
+            # 🔥 PARACADUTE: Se il link web fallisce, disegna da solo la copertina colorata per non far crashare Git
+            img = Image.new('RGB', (600, 1024), color = (0, 76, 153))
+            d = ImageDraw.Draw(img)
+            d.rectangle([(0, 0), (600, 60)], fill=(255, 128, 0))
+            img.save(nome_copertina, "JPEG", quality=75)
+            cov_ok = True
 
-        # 2. Scarica le pagine reali e compila il file .cbz leggero per il 3DS
+        # 2. Scarica le pagine e compila il file .cbz
         temp_zip = nome_cbz.replace(".cbz", ".zip")
         pagine_ok = 0
         with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as cbz:
@@ -81,9 +86,8 @@ def main():
         if pagine_ok > 0 and os.path.exists(temp_zip):
             os.rename(temp_zip, nome_cbz)
             
-            # 🔥 CORREZIONE BARRA: Aggiunta la barra / dopo raw.githubusercontent.com
-            url_copertina_3ds = f"https://raw.githubusercontent.com/{repo_name}/main/{nome_copertina}" if cov_ok else ""
-            url_manga_3ds = f"https://raw.githubusercontent.com/{repo_name}/main/{nome_cbz}"
+            url_copertina_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_copertina}" if cov_ok else ""
+            url_manga_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_cbz}"
             
             catalogo_finale.append({
                 "title": manga["title"],
@@ -94,10 +98,10 @@ def main():
         else:
             if os.path.exists(temp_zip): os.remove(temp_zip)
 
-    # Scrive il catalogo finale con i titoli reali dei manga
+    # Scrive il catalogo finale
     with open("catalog.json", "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
-    print("[✔] catalog.json generato con manga reali.")
+    print("[✔] catalog.json generato con successo.")
 
 if __name__ == "__main__":
     main()
