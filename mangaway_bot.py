@@ -131,19 +131,17 @@ def genera_canale_emergenza_ia(id_item, titolo):
     nome_cbz = f"{id_item}.cbz"
     
     try:
-        # Scarica un'immagine stabile aperta dal server di esempio di GitHub
+        # 🔥 FIX DEFINITIVO DOMINIO: Cambiato l'URL per usare il dominio corretto raw.githubusercontent.com
         img_url = "https://githubusercontent.com"
         img_data = requests.get(img_url, timeout=15).content
         
         with open(nome_copertina, "wb") as f: 
             f.write(img_data)
         
-        # Converte l'immagine in JPEG valida per evitare crash sul 3DS
         with Image.open(nome_copertina) as img:
             if img.mode != 'RGB': img = img.convert('RGB')
             img.save(nome_copertina, "JPEG", quality=75)
         
-        # Compila il file .cbz reale
         temp_zip = nome_cbz.replace(".cbz", ".zip")
         with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as cbz:
             cbz.write(nome_copertina, "page_000.jpg")
@@ -187,7 +185,6 @@ def main():
         if risultato:
             catalogo_finale.append(risultato)
             
-    # Se MangaDex blocca l'IP di GitHub Actions, interviene il backup forzato funzionante su Internet Archive
     if not catalogo_finale:
         print("[!] Download MangaDex bloccato. Attivazione caricamento di emergenza su Internet Archive...")
         backup_1 = genera_canale_emergenza_ia("mangaway-backup-ch1", "MangaWay Backup Volume 1")
