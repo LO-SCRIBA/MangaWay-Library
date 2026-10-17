@@ -9,12 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     
+    # Sblocca i permessi di scrittura per i Token di GitHub
     permissions:
       contents: write
 
     steps:
     - name: Checkout repository code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Scarica tutta la cronologia per evitare conflitti di Git
 
     - name: Set up Python Environment
       uses: actions/setup-python@v5
@@ -29,7 +32,6 @@ jobs:
       env:
         IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
         IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
-      # Il comando '2>&1' intercetta gli errori fatali di Python e li scrive a schermo nei log di GitHub
       run: |
         python mangaway_bot.py 2>&1
 
@@ -37,6 +39,7 @@ jobs:
       run: |
         git config --global user.name "MangaWay-Bot"
         git config --global user.email "bot@mangaway.store"
-        git add catalog.json || echo "No files to add"
+        # Forza Git a vedere il file catalog.json anche se prima lo ignorava
+        git add -f catalog.json
         git commit -m "Auto-Update: New manga chapters added by LO-SCRIBA Bot" || echo "No changes to commit"
         git push origin main || git push origin master
