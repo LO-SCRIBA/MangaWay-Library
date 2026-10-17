@@ -1,28 +1,16 @@
 import os
 import json
-import requests
 import zipfile
 from PIL import Image, ImageDraw
-import urllib3
-from internetarchive import upload, get_session
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Configurazione Internet Archive presa dai Secrets di GitHub
-IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY")
-IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY")
-
-# Avvia la sessione con Internet Archive
-session = get_session(config={"s3": {"access": IA_ACCESS_KEY, "secret": IA_SECRET_KEY}})
-
-def genera_canale_emergenza_ia(id_item, titolo):
-    """Genera file CBZ di test e li carica su Internet Archive usando la sintassi corretta"""
+def genera_canale_emergenza_ia(id_item, titolo, access_key, secret_key):
+    """Genera file CBZ di test e li carica su Internet Archive inserendo le chiavi direttamente nel comando"""
     print(f"[*] Compilazione pacchetto autonomo di emergenza per: {titolo}")
     nome_copertina = f"{id_item}_cover.jpg"
     nome_cbz = f"{id_item}.cbz"
     
     try:
-        # Crea un'immagine geometrica locale per evitare blocchi di rete
+        # Crea un'immagine geometrica locale
         img = Image.new('RGB', (600, 1024), color = (0, 76, 153))
         d = ImageDraw.Draw(img)
         d.rectangle([(0, 0), (600, 60)], fill=(255, 128, 0))
@@ -44,12 +32,16 @@ def genera_canale_emergenza_ia(id_item, titolo):
             "creator": "MangaWay Bot"
         }
         
-        # 🔥 FIX CRITICO: Cambiato 'itemid' in 'identifier' come richiesto dalla libreria
+        # Importazione locale per evitare crash di inizializzazione globale
+        from internetarchive import upload
+        
+        # 🔥 FIX CONFIGURAZIONE: Le chiavi vengono passate direttamente qui dentro come configurazione esplicita della chiamata
         upload(
             identifier=id_item, 
             files=dict_file, 
             metadata=metadati, 
-            archive_session=session
+            access_key=access_key,
+            secret_key=secret_key
         )
         print(f"[🎉] Caricato con successo su Internet Archive!")
         
@@ -71,11 +63,16 @@ def genera_canale_emergenza_ia(id_item, titolo):
 
 def main():
     print("[*] Avvio MangaWay Core Compiler...")
+    
+    # Recupera le chiavi all'interno della funzione principale
+    IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY", "")
+    IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY", "")
+    
     catalogo_finale = []
     
-    # Avvia direttamente il sistema di caricamento stabile su Internet Archive
-    backup_1 = genera_canale_emergenza_ia("mangaway-backup-ch1", "MangaWay Stabile Volume 1")
-    backup_2 = genera_canale_emergenza_ia("mangaway-backup-ch2", "MangaWay Stabile Volume 2")
+    # Passa le credenziali direttamente alle funzioni di lavoro
+    backup_1 = genera_canale_emergenza_ia("mangaway-backup-ch1", "MangaWay Stabile Volume 1", IA_ACCESS_KEY, IA_SECRET_KEY)
+    backup_2 = genera_canale_emergenza_ia("mangaway-backup-ch2", "MangaWay Stabile Volume 2", IA_ACCESS_KEY, IA_SECRET_KEY)
     
     if backup_1: catalogo_finale.append(backup_1)
     if backup_2: catalogo_finale.append(backup_2)
