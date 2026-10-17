@@ -1,0 +1,31 @@
+BasicInfo:
+  Title: MangaWay
+  ProductCode: CTR-P-MNWY
+  ContentType: Application
+
+SystemControlInfo:
+  SaveDataSize: 0KB
+  RemasterVersion: 0
+  StackSize: 0x40000
+
+AccessControlInfo:
+  CoreVersion: 2
+  Priority: 48
+  IdealProcessor: 0
+  HandleTableSize: 512
+
+  ServiceAccessControl:
+    - "$font"
+    - "hid:USER"
+    - "fs:USER"
+    - "soc:U"
+    - "http:c"
+    - "apt:u"
+
+  SystemCallAccess:
+    ControlMemory: 1
+    CreateThread: 17
+    ExitThread: 18
+    CloseHandle: 35
+    ConnectToPort: 44
+    SendSyncRequest: 49
