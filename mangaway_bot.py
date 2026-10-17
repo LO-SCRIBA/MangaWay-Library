@@ -147,7 +147,8 @@ def genera_canale_emergenza_ia(id_item, titolo):
         temp_zip = nome_cbz.replace(".cbz", ".zip")
         with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as cbz:
             cbz.write(nome_copertina, "page_000.jpg")
-        os.rename(temp_zip, nome_cbz)
+        if os.path.exists(temp_zip):
+            os.rename(temp_zip, nome_cbz)
             
         dict_file = {nome_cbz: nome_cbz, nome_copertina: nome_copertina}
         metadati = {
@@ -157,7 +158,6 @@ def genera_canale_emergenza_ia(id_item, titolo):
             "creator": "MangaWay Bot"
         }
         
-        # 🔥 FIX CORRETTO: Aggiunto esplicitamente il parametro 'itemid' per la libreria
         upload(itemid=id_item, files=dict_file, metadata=metadati, archive_session=session)
         
         res = {
@@ -166,7 +166,6 @@ def genera_canale_emergenza_ia(id_item, titolo):
             "download_url": f"https://archive.org{id_item}/{nome_cbz}"
         }
         
-        # Rimuoviamo i file locali per lasciare pulito il server di Git
         for f in [nome_copertina, nome_cbz]:
             if os.path.exists(f): os.remove(f)
         return res
@@ -185,7 +184,7 @@ def main():
     
     for item in manga_target:
         risultato = scarica_manga_diretto(item["id"], item["titolo"])
-        if resultado:
+        if risultato:
             catalogo_finale.append(risultato)
             
     # Se MangaDex blocca l'IP di GitHub Actions, interviene il backup forzato funzionante su Internet Archive
