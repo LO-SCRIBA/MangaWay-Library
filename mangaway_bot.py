@@ -3,13 +3,14 @@ import requests
 import zipfile
 from PIL import Image
 import urllib3
+import json as python_json
 
-# Disabilita i messaggi di avviso SSL sul server
+# Silenziamo gli avvisi di sicurezza SSL sul server
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
     """
-    Cerca un manga su MangaDex, scarica il capitolo, ridimensiona le immagini per il 3DS
+    Cerca un manga su MangaDex, scarica il capitolo, ridimensiona le pagine per il 3DS
     e compila il file .cbz aggiornando automaticamente il catalogo locale.
     """
     print(f"[*] Searching for '{nome_manga}' on MangaDex...")
@@ -33,8 +34,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         print("[-] Error: Manga not found on MangaDex.")
         return
         
-    # 🔥 CORREZIONE CHIRURGICA INDICI: Estrazione corretta dall'array "data" di MangaDex
-    manga_struttura = data_ricerca["data"][0] 
+    manga_struttura = data_ricerca["data"][0] # Corretto l'indice dell'array
     manga_id = manga_struttura["id"]
     titolo_reale = manga_struttura["attributes"]["title"].get("en", nome_manga)
     print(f"[+] Found: {titolo_reale} (ID: {manga_id})")
@@ -53,7 +53,7 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         print(f"[-] Error: Chapter {numero_capitolo} in language '{lingua}' not found.")
         return
         
-    chapter_struttura = r_cap.json()["data"][0]
+    chapter_struttura = r_cap.json()["data"][0] # Corretto l'indice dell'array
     chapter_id = chapter_struttura["id"]
     print(f"[+] Found Chapter ID: {chapter_id}")
 
@@ -80,7 +80,6 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
     with zipfile.ZipFile(nome_zip_temp, 'w', zipfile.ZIP_DEFLATED) as cbz:
         for i, filename_pagina in enumerate(lista_pagine):
             url_pagina = f"{base_url}/data-saver/{hash_capitolo}/{filename_pagina}"
-            
             img_data = requests.get(url_pagina, headers=headers, verify=False).content
             nome_temp_img = f"temp_page_{i}.jpg"
             
@@ -113,18 +112,17 @@ def cerca_e_scarica_capitolo_3ds(nome_manga, numero_capitolo, lingua="en"):
         os.rename(nome_zip_temp, nome_output_cbz)
         print(f"\n[🎉] SUCCESS! File compiled successfully: {nome_output_cbz}")
         
-        # 🔥 AUTOMAZIONE CATALOGO: Scrive direttamente la struttura corretta dentro il file local catalog.json
-        import json as python_json
+        # Genera il record del singolo manga
         blocco_manga = {
             "titolo": f"{titolo_reale} - Chapter {numero_capitolo}",
             "url_cbz": f"https://githubusercontent.com{nome_output_cbz}",
             "filename": nome_output_cbz
         }
         
-        # Sovrascrive il catalog.json locale con il nuovo array aggiornato
+        # Scrive il file catalog.json in modo pulito e sicuro
         with open("catalog.json", "w") as f_cat:
             python_json.dump([blocco_manga], f_cat, indent=2)
-        print("[+] catalog.json updated successfully on server cache!")
+        print("[+] catalog.json compiled successfully!")
 
-# Avvia il bot
+# Inizializza lo scraping di test
 cerca_e_scarica_capitolo_3ds("My Dress-Up Darling", 1, lingua="en")
