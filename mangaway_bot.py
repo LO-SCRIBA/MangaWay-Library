@@ -34,10 +34,10 @@ def main():
         {"id": "mangaway-backup-ch2", "titolo": "MangaWay Stabile Volume 2"}
     ]
     
-    # Se le chiavi su GitHub sono vuote, attiva la modalità di emergenza locale immediata
+    # Controllo di sicurezza sulle chiavi segrete
     chiavi_presenti = len(IA_ACCESS_KEY) > 0 and len(IA_SECRET_KEY) > 0
     if not chiavi_presenti:
-        print("[!] Chiavi assenti nei Secrets. Attivazione scrittura indice locale di sicurezza...")
+        print("[!] Chiavi assenti nei Secrets. Attivazione scrittura indice locale...")
 
     for vol in volumi:
         id_item = vol["id"]
@@ -46,7 +46,7 @@ def main():
         nome_copertina = f"{id_item}_cover.jpg"
         nome_cbz = f"{id_item}.cbz"
         
-        # Genera file grafico locale
+        # Genera file grafico di test locale
         img = Image.new('RGB', (600, 1024), color = (0, 76, 153))
         d = ImageDraw.Draw(img)
         d.rectangle([(0, 0), (600, 60)], fill=(255, 128, 0))
@@ -57,7 +57,6 @@ def main():
             cbz.write(nome_copertina, "page_000.jpg")
         if os.path.exists(temp_zip): os.rename(temp_zip, nome_cbz)
             
-        # Tenta l'upload solo se le chiavi ci sono
         up_ok = False
         if chiavi_presenti:
             up_cov = carica_file_s3(id_item, nome_copertina, nome_copertina, IA_ACCESS_KEY, IA_SECRET_KEY)
@@ -65,14 +64,15 @@ def main():
             up_ok = up_cbz
             
         if up_ok:
-            # Link reali di Internet Archive
+            # 🌐 LINK DI INTERNET ARCHIVE (Scatta in automatico se i Secrets sono corretti)
             catalogo_finale.append({
                 "title": titolo,
                 "cover_url": f"https://archive.org{id_item}/{nome_copertina}",
                 "download_url": f"https://archive.org{id_item}/{nome_cbz}"
             })
+            print(f"[+] {titolo} caricato con successo su Internet Archive!")
         else:
-            # Backup Link interni su GitHub se non si possiedono le chiavi di Internet Archive configurate
+            # 📂 LINK DI RISERVA SU GITHUB (Corretto l'errore della barra mancante)
             repo_name = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay-Library')
             catalogo_finale.append({
                 "title": titolo,
