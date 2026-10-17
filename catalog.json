@@ -1,8 +1,7 @@
 [
   {
-    "titolo": "My Dress-Up Darling",
-    "capitolo": "01",
-    "url": "https://archive.org/download/my-dress-up-darling-c.-1/My%20Dress-Up%20Darling%20c.1.cbz",
-    "nome_file": "My Dress-Up Darling c.1.cbz"
+    "titolo": "My Dress-Up Darling - Capitolo 1",
+    "url_cbz": "https://archive.org/download/my-dress-up-darling-c.-1/My%20Dress-Up%20Darling%20c.1.cbz",
+    "filename": "mydressup_01.cbz"
   }
 ]
