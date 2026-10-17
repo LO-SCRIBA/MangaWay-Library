@@ -1,1 +1,12 @@
-[]
+[
+    {
+        "title": "One Piece - Vol.1 (Manga)",
+        "cover_url": "https://archive.orgmanga_One_Piece_v01-20/%21cover.jpg",
+        "download_url": "https://archive.orgmanga_One_Piece_v01-20/One_Piece_v01.cbz"
+    },
+    {
+        "title": "Naruto - Vol.1 (Manga)",
+        "cover_url": "https://archive.orgmanga_Naruto_v01-10/%21cover.jpg",
+        "download_url": "https://archive.orgmanga_Naruto_v01-10/Naruto_v01.cbz"
+    }
+]
