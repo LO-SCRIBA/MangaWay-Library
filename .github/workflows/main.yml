@@ -2,7 +2,7 @@ name: MangaWay Auto Scraper
 
 on:
   schedule:
-    - cron: '0 2 * * *' # Parte da solo ogni notte alle 2:00
+    - cron: '0 2 * * *' # Parte in automatico ogni notte alle 2:00
   workflow_dispatch: # Ti permette di farlo partire a mano con il bottone
 
 jobs:
