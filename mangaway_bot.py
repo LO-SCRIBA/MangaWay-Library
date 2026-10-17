@@ -12,73 +12,75 @@ IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY")
 IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY")
 
 session = get_session(config={"s3": {"access": IA_ACCESS_KEY, "secret": IA_SECRET_KEY}})
-BASE_URL = "https://api.mangadex.org"
+BASE_URL = "https://mangadex.org"
 
-def ottieni_manga_disponibili(limite=5):
-    print(f"[*] Ricerca di {limite} manga su MangaDex...")
-    url = f"{BASE_URL}/manga"
-    parametri = {
-        "limit": limite,
-        "includes[]": ["cover_art"],
-        "contentRating[]": ["safe"]
-    }
+def scarica_manga_diretto(id_manga, titolo_manga):
+    """Scarica un manga specifico tramite il suo ID univoco di MangaDex"""
+    print(f"[*] Avvio download forzato per: {titolo_manga}")
+    
+    # 1. Recupera la copertina
+    url_manga = f"{BASE_URL}/manga/{id_manga}?includes[]=cover_art"
+    url_copertina = ""
+    descrizione = "Ottimizzato per MangaWay 3DS."
     try:
-        risposta = requests.get(url, params=parametri).json()
-        lista_manga = []
-        for item in risposta.get("data", []):
-            id_manga = item["id"]
-            titolo = item["attributes"]["title"].get("en", list(item["attributes"]["title"].values())[0])
-            descrizione = item["attributes"]["description"].get("en", "MangaWay automated download.")
-            
-            nome_file_copertina = ""
-            for rel in item["relationships"]:
-                if rel["type"] == "cover_art" and "attributes" in rel:
-                    nome_file_copertina = rel["attributes"].get("fileName", "")
-            
-            url_copertina = f"https://mangadex.org{id_manga}/{nome_file_copertina}" if nome_file_copertina else ""
-            lista_manga.append({"id": id_manga, "titolo": titolo, "descrizione": descrizione, "url_copertina": url_copertina})
-        return lista_manga
+        res = requests.get(url_manga).json()
+        descrizione = res["data"]["attributes"]["description"].get("en", descrizione)[:200]
+        for rel in res["data"]["relationships"]:
+            if rel["type"] == "cover_art" and "attributes" in rel:
+                nome_file = rel["attributes"].get("fileName", "")
+                if nome_file:
+                    url_copertina = f"https://mangadex.org{id_manga}/{nome_file}"
     except Exception as e:
-        print(f"[-] Errore MangaDex: {e}")
-        return []
+        print(f"[-] Errore recupero metadati: {e}")
 
-def ottieni_pagine_capitolo(id_manga):
+    # 2. Recupera le pagine del primo capitolo disponibile
     url_feed = f"{BASE_URL}/manga/{id_manga}/feed"
-    parametri = {"limit": 30, "translatedLanguage[]": ["en"], "order[chapter]": "asc"}
+    parametri = {"limit": 10, "translatedLanguage[]": ["en"], "order[chapter]": "asc"}
+    link_pagine = []
     try:
-        risposta = requests.get(url_feed, params=parametri).json()
-        for capitolo in risposta.get("data", []):
+        feed_res = requests.get(url_feed, params=parametri).json()
+        for capitolo in feed_res.get("data", []):
             id_capitolo = capitolo["id"]
             dati_server = requests.get(f"{BASE_URL}/at-home/server/{id_capitolo}").json()
             if "chapter" in dati_server and dati_server["chapter"]["dataSaver"]:
                 hash_capitolo = dati_server["chapter"]["hash"]
                 url_base = dati_server["baseUrl"]
-                return [f"{url_base}/data-saver/{hash_capitolo}/{pag}" for pag in dati_server["chapter"]["dataSaver"]]
-    except:
-        pass
-    return []
+                link_pagine = [f"{url_base}/data-saver/{hash_capitolo}/{pag}" for pag in dati_server["chapter"]["dataSaver"]]
+                break
+    except Exception as e:
+        print(f"[-] Errore recupero pagine capitolo: {e}")
 
-def ottimizza_e_salva_copertina(url_copertina, percorso_output):
-    if not url_copertina: return False
-    try:
-        img_data = requests.get(url_copertina).content
-        temp = "temp_raw_cov.jpg"
-        with open(temp, "wb") as f: f.write(img_data)
-        with Image.open(temp) as img:
-            if img.mode != 'RGB': img = img.convert('RGB')
-            if img.height > 1024:
-                prop = 1024 / float(img.height)
-                img = img.resize((int(float(img.width) * prop), 1024), Image.Resampling.LANCZOS)
-            img.save(percorso_output, "JPEG", quality=75)
-        if os.path.exists(temp): os.remove(temp)
-        return True
-    except: return False
+    if not link_pagine:
+        print(f"[-] Impossibile estrarre pagine per {titolo_manga}")
+        return None
 
-def crea_cbz_3ds(lista_url_pagine, percorso_cbz):
-    temp_zip = percorso_cbz.replace(".cbz", ".zip")
-    pagine_scaricate = 0
+    # Id univoco pulito per Internet Archive
+    id_unico_ia = "mangaway-" + "".join(c for c in titolo_manga.lower() if c.isalnum() or c in " -").replace(" ", "-")
+    id_unico_ia = id_unico_ia[:50].strip("-")
+    
+    nome_copertina = f"{id_unico_ia}_cover.jpg"
+    nome_cbz = f"{id_unico_ia}.cbz"
+    
+    # 3. Ottimizzazione Grafica 3DS (1024px, JPEG 75%)
+    cov_ok = False
+    if url_copertina:
+        try:
+            img_data = requests.get(url_copertina).content
+            with open("temp_c.jpg", "wb") as f: f.write(img_data)
+            with Image.open("temp_c.jpg") as img:
+                if img.mode != 'RGB': img = img.convert('RGB')
+                if img.height > 1024:
+                    img = img.resize((int(float(img.width) * (1024 / float(img.height))), 1024), Image.Resampling.LANCZOS)
+                img.save(nome_copertina, "JPEG", quality=75)
+            os.remove("temp_c.jpg")
+            cov_ok = True
+        except: pass
+
+    # Creazione file .cbz
+    temp_zip = nome_cbz.replace(".cbz", ".zip")
+    pagine_ok = 0
     with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as cbz:
-        for i, url in enumerate(lista_url_pagine):
+        for i, url in enumerate(link_pagine):
             try:
                 img_data = requests.get(url).content
                 nome_temp = f"temp_p_{i}.png"
@@ -86,74 +88,69 @@ def crea_cbz_3ds(lista_url_pagine, percorso_cbz):
                 with Image.open(nome_temp) as img:
                     if img.mode != 'RGB': img = img.convert('RGB')
                     if img.height > 1024:
-                        prop = 1024 / float(img.height)
-                        img = img.resize((int(float(img.width) * prop), 1024), Image.Resampling.LANCZOS)
+                        img = img.resize((int(float(img.width) * (1024 / float(img.height))), 1024), Image.Resampling.LANCZOS)
                     nome_pag_3ds = f"page_{i:03d}.jpg"
                     img.save(nome_pag_3ds, "JPEG", quality=75)
                     cbz.write(nome_pag_3ds, nome_pag_3ds)
                     os.remove(nome_pag_3ds)
                 os.remove(nome_temp)
-                pagine_scaricate += 1
+                pagine_ok += 1
             except: pass
-    if pagine_scaricate > 0 and os.path.exists(temp_zip):
-        os.rename(temp_zip, percorso_cbz)
-        return True
+
+    if pagine_ok > 0 and os.path.exists(temp_zip):
+        os.rename(temp_zip, nome_cbz)
+        
+        # 4. Caricamento effettivo su Internet Archive
+        dict_file = {nome_cbz: nome_cbz}
+        if cov_ok: dict_file[nome_copertina] = nome_copertina
+        
+        metadati = {
+            "collection": "opensource",
+            "title": f"MangaWay - {titolo_manga}",
+            "mediatype": "texts",
+            "description": descrizione,
+            "creator": "MangaWay Bot"
+        }
+        
+        print(f"[*] Upload in corso su Internet Archive per {titolo_manga}...")
+        try:
+            upload(itemid=id_unico_ia, files=dict_file, metadata=metadati, archive_session=session)
+            print(f"[🎉] Fatto! Caricato nell'archivio online.")
+            
+            output = {
+                "title": titolo_manga,
+                "cover_url": f"https://archive.org{id_unico_ia}/{nome_copertina}" if cov_ok else "",
+                "download_url": f"https://archive.org{id_unico_ia}/{nome_cbz}"
+            }
+            
+            # Pulizia file locali sul server GitHub
+            for f in [nome_copertina, nome_cbz]:
+                if os.path.exists(f): os.remove(f)
+            return output
+        except Exception as e:
+            print(f"[-] Errore upload Internet Archive: {e}")
+            
     if os.path.exists(temp_zip): os.remove(temp_zip)
-    return False
+    return None
 
 def main():
     catalogo_finale = []
-    manga_trovati = ottieni_manga_disponibili(limite=5)
     
-    for manga in manga_trovati:
-        titolo_pulito = manga["titolo"]
-        id_unico_ia = "mangaway-" + "".join(c for c in titolo_pulito.lower() if c.isalnum() or c in " -").replace(" ", "-")
-        id_unico_ia = id_unico_ia[:50].strip("-")
-        
-        urls_pagine = ottieni_pagine_capitolo(manga["id"])
-        if not urls_pagine: continue
+    # Lista controllata di Manga Famosi per evitare blocchi IP generici
+    # Ogni dizionario ha il titolo e l'ID fisso ricavato da MangaDex
+    manga_target = [
+        {"titolo": "Chainsaw Man", "id": "a77742b1-cdef-4c34-bf32-c507456bbd54"},
+        {"titolo": "Boku no Hero Academia", "id": "f213b48a-accd-4ef4-a30f-d1b5ed4e3a8d"}
+    ]
+    
+    for item in manga_target:
+        risultato = scarica_manga_diretto(item["id"], item["titolo"])
+        if risultato:
+            catalogo_finale.append(risultato)
             
-        nome_copertina = f"{id_unico_ia}_cover.jpg"
-        nome_cbz = f"{id_unico_ia}.cbz"
-        
-        cov_ok = ottimizza_e_salva_copertina(manga["url_copertina"], nome_copertina)
-        cbz_ok = crea_cbz_3ds(urls_pagine, nome_cbz)
-        
-        if cbz_ok:
-            dict_file = {nome_cbz: nome_cbz}
-            if cov_ok: dict_file[nome_copertina] = nome_copertina
-            metadati = {"collection": "opensource", "title": f"MangaWay - {titolo_pulito}", "mediatype": "texts", "description": manga["descrizione"][:200], "creator": "MangaWay Bot"}
-            try:
-                upload(itemid=id_unico_ia, files=dict_file, metadata=metadati, archive_session=session)
-                catalogo_finale.append({
-                    "title": titolo_pulito,
-                    "cover_url": f"https://archive.org{id_unico_ia}/{nome_copertina}" if cov_ok else "",
-                    "download_url": f"https://archive.org{id_unico_ia}/{nome_cbz}"
-                })
-                print(f"[🎉] Caricato su IA: {titolo_pulito}")
-            except: pass
-        for f in [nome_copertina, nome_cbz]:
-            if os.path.exists(f): os.remove(f)
-
-    # 🚨 SISTEMA DI EMERGENZA ANCORA ATTIVO: se MangaDex fallisce del tutto, inserisce due manga sicuri nel catalogo
-    if not catalogo_finale:
-        print("[!] Nessun manga elaborato da MangaDex. Attivo i canali stabili di emergenza...")
-        catalogo_finale = [
-            {
-                "title": "MangaWay Manual Channel 1",
-                "cover_url": "https://wikimedia.org",
-                "download_url": "https://w3.org"
-            },
-            {
-                "title": "MangaWay Manual Channel 2",
-                "cover_url": "https://wikimedia.org",
-                "download_url": "https://w3.org"
-            }
-        ]
-
     with open("catalog.json", "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
-    print("[✔] catalog.json aggiornato!")
+    print("[✔] Script terminato. catalog.json generato.")
 
 if __name__ == "__main__":
     main()
