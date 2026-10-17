@@ -11,7 +11,7 @@ def main():
     catalogo_finale = []
     
     # 🔍 Parole chiave dei manga reali da cercare direttamente su Internet Archive
-    manga_da_cercare = [
+    manga_target = [
         "One Piece Digital Colored Comics",
         "Naruto digital colored comics",
         "Chainsaw Man manga"
@@ -84,7 +84,7 @@ def main():
         except Exception as e:
             print(f"[-] Errore durante la ricerca di {query}: {e}")
 
-    # Se la ricerca fallisce del tutto, inseriamo due record di backup scritti bene con veri file IA
+    # Se la ricerca API fallisce o non trova nulla, inseriamo due record di backup scritti bene con veri file IA stabili
     if not catalogo_finale:
         print("[!] Nessun file trovato. Attivazione canali stabili pre-configurati...")
         catalogo_finale = [
