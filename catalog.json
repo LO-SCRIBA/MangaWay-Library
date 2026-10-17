@@ -1,7 +1,7 @@
 [
   {
-    "titolo": "MangaWay Test - Light Chapter",
-    "url_cbz": "https://raw.githubusercontent.com/rdryfoos/specassay/main/catalogs/presets.json",
-    "filename": "MangaWay_Test_Light.cbz"
+    "titolo": "MangaWay Test Leggero",
+    "url_cbz": "https://raw.githubusercontent.com/LO-SCRIBA/MangaWay-Library/main/catalog.json",
+    "filename": "Test_MangaWay.cbz"
   }
 ]
