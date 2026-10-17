@@ -11,7 +11,6 @@ def main():
     repo_name = os.environ.get('GITHUB_REPOSITORY', 'LO-SCRIBA/MangaWay-Library')
     
     # 📚 ELENCO DEI MANGA VERI E DEI CAPITOLI REALI
-    # Ho inserito link a server aperti stabili contenenti le immagini reali delle pagine
     manga_reali = [
         {
             "title": "One Piece - Chapter 1",
@@ -40,6 +39,7 @@ def main():
         
         nome_copertina = f"{manga['id']}_cover.jpg"
         nome_cbz = f"{manga['id']}.cbz"
+        cov_ok = False
         
         # 1. Scarica e ottimizza la copertina vera del manga per il 3DS
         try:
@@ -81,9 +81,9 @@ def main():
         if pagine_ok > 0 and os.path.exists(temp_zip):
             os.rename(temp_zip, nome_cbz)
             
-            # Genera i link di download diretti stabili sfruttando la memoria del tuo repository GitHub
-            url_copertina_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_copertina}" if cov_ok else ""
-            url_manga_3ds = f"https://githubusercontent.com{repo_name}/main/{nome_cbz}"
+            # 🔥 CORREZIONE BARRA: Aggiunta la barra / dopo raw.githubusercontent.com
+            url_copertina_3ds = f"https://raw.githubusercontent.com/{repo_name}/main/{nome_copertina}" if cov_ok else ""
+            url_manga_3ds = f"https://raw.githubusercontent.com/{repo_name}/main/{nome_cbz}"
             
             catalogo_finale.append({
                 "title": manga["title"],
