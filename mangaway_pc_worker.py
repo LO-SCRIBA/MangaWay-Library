@@ -40,7 +40,7 @@ def main():
             official_title = results[0]["attributes"]["title"].get("en", title)
             
             # Fetch English chapters
-            ch_res = session.get(f"{BASE_API_URL}/manga/{manga_id}/feed", params={"translatedLanguage[]": ["en"], "order[chapter]": "asc", "limit": 15}, verify=False).json()
+            ch_res = session.get(f"{BASE_API_URL}/manga/{manga_id}/feed", params={"translatedLanguage[]": ["en"], "order[chapter]": "asc", "limit": 100}, verify=False).json()
             chapters = ch_res.get("data", [])
             
             for ch in chapters:
