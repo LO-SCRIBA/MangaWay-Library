@@ -7,8 +7,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 
-# --- HARDCODED TARGET KEYS ---
-IA_ARCHIVE_ID = "EMPTYFILE"
+# --- HARDCODED PLATFORM ENGINES ---
 GITHUB_USER = "LO-SCRIBA"
 GITHUB_REPO = "MangaWay-Library"
 
@@ -34,19 +33,18 @@ def save_as_t3x(img, t3x_path):
         return False
 
 def main():
-    print(f"[*] Compiling 3DS catalog from Internet Archive item vault: {IA_ARCHIVE_ID}")
+    print("[*] Launching Explicit Metadata Fetch Gateway...")
     if not os.path.exists(COVERS_DIR):
         os.makedirs(COVERS_DIR)
 
-    # 🎯 FIXED: Hardcoded full clean URL route with explicit domain separation slash
-    url_metadata = f"https://archive.org{IA_ARCHIVE_ID}"
+    # 🎯 HARDCODED CLEAN LINK: Completely isolates the request away from variable appending bugs
+    url_metadata = "https://archive.org/details/EMPTYFILE"
     catalogo_finale = []
 
     try:
         res = requests.get(url_metadata, timeout=15).json()
         file_lista = res.get("files", [])
         
-        # Pulls only verified CBZ packets deployed by your worker
         manga_files = [f["name"] for f in file_lista if f["name"].lower().endswith(".cbz")]
 
         for filename in manga_files:
@@ -54,12 +52,12 @@ def main():
             manga_id = "".join([c if c.isalnum() else "_" for c in filename.lower()]).strip("_")
             t3x_path = os.path.join(COVERS_DIR, f"{manga_id}.t3x")
             
-            url_manga_grezzo = f"https://archive.org{IA_ARCHIVE_ID}/{filename}"
+            url_manga_grezzo = f"https://archive.org/{filename}"
             url_manga_sicuro = urllib.parse.quote(url_manga_grezzo, safe=':/')
-            url_cover_3ds = f"https://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
+            url_cover_3ds = f"https://githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
 
             if not os.path.exists(t3x_path):
-                print(f"[*] Downloading metadata packet to generate .t3x for: {filename}")
+                print(f"[*] Extracting frame asset -> {filename}")
                 cbz_res = requests.get(url_manga_sicuro, timeout=30)
                 if cbz_res.status_code == 200:
                     with zipfile.ZipFile(BytesIO(cbz_res.content)) as z:
@@ -69,21 +67,20 @@ def main():
                                 img = Image.open(first_page)
                                 save_as_t3x(img, t3x_path)
 
-            # 🎯 FIXED: Field mappings perfectly aligned with your C++ element structure
             catalogo_finale.append({
                 "titolo": titolo_pulito,
                 "url_cbz": url_manga_sicuro,
                 "filename": filename,
                 "cover_url": url_cover_3ds
             })
-            print(f"[🎉] Added to store menu: {titolo_pulito}")
+            print(f"[🎉] Target Added: {titolo_pulito}")
 
     except Exception as e:
-        print(f"[-] Catalog compilation stopped: {e}")
+        print(f"[-] Fatal error on fetch string: {e}")
 
     with open(CATALOG_FILE, "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
-    print(f"[✔] Action complete. Total items loaded into catalog.json: {len(catalogo_finale)}")
+    print(f"[✔] Catalog built! Total entries found: {len(catalogo_finale)}")
 
 if __name__ == "__main__":
     main()
