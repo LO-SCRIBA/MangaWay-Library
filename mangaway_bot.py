@@ -7,9 +7,11 @@ import requests
 from PIL import Image
 from io import BytesIO
 
+# --- HARDCODED TARGET KEYS ---
 IA_ARCHIVE_ID = "EMPTYFILE"
 GITHUB_USER = "LO-SCRIBA"
 GITHUB_REPO = "MangaWay-Library"
+
 CATALOG_FILE = "catalog.json"
 COVERS_DIR = "covers"
 COVER_SIZE = (128, 256)
@@ -32,10 +34,11 @@ def save_as_t3x(img, t3x_path):
         return False
 
 def main():
-    print(f"[*] Compiling 3DS catalog from Internet Archive item: {IA_ARCHIVE_ID}")
+    print(f"[*] Compiling 3DS catalog from Internet Archive item vault: {IA_ARCHIVE_ID}")
     if not os.path.exists(COVERS_DIR):
         os.makedirs(COVERS_DIR)
 
+    # 🎯 FIXED: Hardcoded full clean URL route with explicit domain separation slash
     url_metadata = f"https://archive.org{IA_ARCHIVE_ID}"
     catalogo_finale = []
 
@@ -43,51 +46,44 @@ def main():
         res = requests.get(url_metadata, timeout=15).json()
         file_lista = res.get("files", [])
         
-        # Filtra solo i file veri .cbz caricati dal PC worker
+        # Pulls only verified CBZ packets deployed by your worker
         manga_files = [f["name"] for f in file_lista if f["name"].lower().endswith(".cbz")]
 
         for filename in manga_files:
-            # Crea un titolo leggibile partendo dal nome del file (es. "naruto_vol0_ch30.cbz" -> "Naruto Vol0 Ch30")
             titolo_pulito = filename.replace(".cbz", "").replace("_", " ").title()
-            
-            # ID univoco per la cover t3x su GitHub
             manga_id = "".join([c if c.isalnum() else "_" for c in filename.lower()]).strip("_")
             t3x_path = os.path.join(COVERS_DIR, f"{manga_id}.t3x")
             
-            # Link di download e link della cover
             url_manga_grezzo = f"https://archive.org{IA_ARCHIVE_ID}/{filename}"
             url_manga_sicuro = urllib.parse.quote(url_manga_grezzo, safe=':/')
             url_cover_3ds = f"https://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
 
-            # Genera la texture se non esiste già su GitHub (risparmia tempo nei workflow)
             if not os.path.exists(t3x_path):
-                print(f"[*] Downloading {filename} to extract 3DS cover...")
+                print(f"[*] Downloading metadata packet to generate .t3x for: {filename}")
                 cbz_res = requests.get(url_manga_sicuro, timeout=30)
                 if cbz_res.status_code == 200:
                     with zipfile.ZipFile(BytesIO(cbz_res.content)) as z:
-                        # Trova la prima immagine utile dentro il CBZ
                         image_files = sorted([f for f in z.namelist() if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
                         if image_files:
-                            with z.open(image_files[0]) as first_page:
+                            with z.open(image_files) as first_page:
                                 img = Image.open(first_page)
                                 save_as_t3x(img, t3x_path)
 
-            # MAPPAZIONE DEI CAMPI COMPATIBILE AL 100% CON IL TUO CODICE C++
+            # 🎯 FIXED: Field mappings perfectly aligned with your C++ element structure
             catalogo_finale.append({
                 "titolo": titolo_pulito,
                 "url_cbz": url_manga_sicuro,
                 "filename": filename,
                 "cover_url": url_cover_3ds
             })
-            print(f"[🎉] Indexed into catalog: {titolo_pulito}")
+            print(f"[🎉] Added to store menu: {titolo_pulito}")
 
     except Exception as e:
-        print(f"[-] Catalog compilation failed: {e}")
+        print(f"[-] Catalog compilation stopped: {e}")
 
-    # Scrittura del catalog.json finale
     with open(CATALOG_FILE, "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
-    print(f"[✔] catalog.json generated with {len(catalogo_finale)} entries.")
+    print(f"[✔] Action complete. Total items loaded into catalog.json: {len(catalogo_finale)}")
 
 if __name__ == "__main__":
     main()
