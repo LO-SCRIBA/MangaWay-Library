@@ -4,6 +4,7 @@ import urllib.parse
 import requests
 from PIL import Image
 import urllib3
+import subprocess
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -32,6 +33,9 @@ def download_and_optimize_cover(manga_id, url):
                 img = img.convert('RGB')
                 img.thumbnail(COVER_SIZE)
                 img.save(local_path, "JPEG", quality=75)
+
+            subprocess.run(["tex3ds", local_path, "-o", t3x_path], check=True)
+            
             # Ritorna l'URL pubblico di GitHub dove risiederà la cover ottimizzata
             return f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.jpg"
     except Exception as e:
