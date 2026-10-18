@@ -80,13 +80,14 @@ def main():
         
         titolo_3ds = titolo if len(titolo) < 40 else titolo[:37] + "..."
         
-        # STRUTTURA MAPPA IDENTICA AL TUO CODELOAD C++
-        catalogo_finale.append({
-            "titolo": titolo_3ds,
-            "url_cbz": url_manga_sicuro,
-            "filename": file_cbz,
-            "cover_url": url_cover_provvisorio
-        })
+        # Nel ciclo for del bot Python, assicurati che la struttura generata sia questa:
+catalogo_finale.append({
+    "titolo": titolo_3ds,
+    "url_cbz": url_manga_sicuro,
+    "filename": file_cbz,
+    "cover_url": f"https://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
+})
+
         print(f"[🎉] Allineato e aggiunto: {titolo_3ds}")
 
     with open(CATALOG_FILE, "w", encoding="utf-8") as f_cat:
