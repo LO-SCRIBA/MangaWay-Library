@@ -1,0 +1,38 @@
+name: 2. 3DS Catalog Compiler
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # Runs 30 minutes after the uploader
+  workflow_dispatch: # Manual button
+
+jobs:
+  compile_catalog:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: pip install requests Pillow
+
+    - name: Compile 3DS Catalog and Textures
+      run: python mangaway_bot.py 2>&1
+
+    - name: Push Changes to GitHub
+      run: |
+        git config --global user.name "MangaWay-Bot"
+        git config --global user.email "bot@mangaway.store"
+        git add catalog.json
+        git add covers/* || echo "No textures compiled"
+        git commit -m "Auto-Compiler: Catalog index and .t3x textures updated" || echo "No changes"
+        git push origin main || git push origin master
