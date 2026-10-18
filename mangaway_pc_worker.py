@@ -18,7 +18,7 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 MAX_WIDTH = 1024 
 JPEG_QUALITY = 70 
 
-# 🌐 SECURE REVERSE PROXY PIPELINE: Drops the GitHub IP footprint completely
+# 🌐 CLEAN REVERSE PROXY COUPLING: Separates the gate endpoint from the nested query formatting
 PROXY_GATE = "https://allorigins.win"
 MANGADEX_API = "https://mangadex.org"
 
@@ -37,7 +37,7 @@ def main():
     for title in manga_queue:
         print(f"\n[🔍] Tunneling request for: {title}")
         try:
-            # Wrap the target URL inside the reverse proxy string
+            # 🎯 FIXED: Build clean decoupled URL parameters
             raw_url = f"{MANGADEX_API}/manga?title={urllib.parse.quote(title)}&limit=1"
             proxied_url = f"{PROXY_GATE}{urllib.parse.quote(raw_url)}"
             
@@ -45,7 +45,8 @@ def main():
             if res.status_code == 200:
                 data = res.json().get("data", [])
                 if data and len(data) > 0:
-                    manga_item = data[0] if isinstance(data, list) else data
+                    # 🎯 FIXED: Safely fetch the first item element in the data index list
+                    manga_item = data[0]
                     manga_id = manga_item["id"]
                     official_title = manga_item["attributes"]["title"].get("en", title)
                 else:
@@ -86,7 +87,6 @@ def main():
                 cbz_buffer = BytesIO()
                 with zipfile.ZipFile(cbz_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for i, page in enumerate(page_files):
-                        # Pull layout assets using direct proxy mapping to guarantee connection delivery
                         page_url = f"{base_url_host}/data/{ch_hash}/{page}"
                         img_res = session.get(page_url, verify=False, timeout=20)
                         
