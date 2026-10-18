@@ -27,6 +27,19 @@ jobs:
       run: |
         pip install requests Pillow
 
+    - name: Install devkitPRO Tools (tex3ds)
+      run: |
+        # Configura le repository di devkitPRO su Ubuntu per scaricare automaticamente tex3ds
+        sudo apt-get update
+        sudo apt-get install -y wget gdebi-core
+        wget https://devkitpro.org
+        sudo gdebi -n devkitpro-keyring.deb
+        echo "deb [signed-by=/usr/share/keyrings/devkitpro-keyring.gpg] https://devkitpro.org ubuntu main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+        sudo apt-get update
+        sudo apt-get install -y 3ds-tools
+        # Aggiunge gli strumenti al PATH di sistema in modo che Python possa richiamarli
+        echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
+
     - name: Run MangaWay Compiler
       run: |
         python mangaway_bot.py 2>&1
@@ -36,10 +49,10 @@ jobs:
         git config --global user.name "MangaWay-Bot"
         git config --global user.email "bot@mangaway.store"
         
-        # Aggiungiamo i file uno alla volta in modo sicuro così Git non andrà mai in crash se uno manca
+        # Sincronizza il catalogo JSON e l'intera cartella delle copertine (JPG e T3X)
         git add catalog.json
+        git add covers/* || echo "Nessuna copertina trovata in covers/"
         git add *.cbz || echo "Nessun file CBZ trovato"
-        git add *_cover.jpg || echo "Nessuna copertina JPG trovata"
         
-        git commit -m "Auto-Update: Real manga chapters added by LO-SCRIBA Bot" || echo "No changes to commit"
+        git commit -m "Auto-Update: Catalog index and 3DS native textures optimized" || echo "No changes to commit"
         git push origin main || git push origin master
