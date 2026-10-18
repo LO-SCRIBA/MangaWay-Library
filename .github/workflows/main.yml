@@ -23,29 +23,9 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Graphic Dependencies
+    - name: Install Python Dependencies
       run: |
         pip install requests Pillow
-
-    - name: Build and Install tex3ds natively
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libpng-dev build-essential autoconf automake pkg-config
-        
-        # 1. Clona il repository corretto degli strumenti 3DS di devkitPRO
-        git clone https://github.com/devkitPro/3dstools
-        cd 3dstools
-        
-        # 2. Genera e configura i file di build per l'ambiente Ubuntu
-        ./autogen.sh
-        ./configure
-        
-        # 3. Compila gli eseguibili nativi
-        make
-        
-        # 4. Sposta tex3ds nella cartella globale dei binari di sistema
-        sudo cp tex3ds /usr/local/bin/
-        cd ..
 
     - name: Run MangaWay Compiler
       run: |
@@ -57,8 +37,8 @@ jobs:
         git config --global user.email "bot@mangaway.store"
         
         git add catalog.json
-        git add covers/* || echo "Nessuna copertina trovata in covers/"
-        git add *.cbz || echo "Nessun file CBZ trovato"
+        git add covers/* || echo "Nessuna copertina trovata"
         
-        git commit -m "Auto-Update: Catalog index and 3DS native textures optimized" || echo "No changes to commit"
+        git commit -m "Auto-Update: Catalog and textures updated via Pure Python" || echo "No changes to commit"
         git push origin main || git push origin master
+
