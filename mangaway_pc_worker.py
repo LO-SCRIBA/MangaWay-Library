@@ -2,6 +2,7 @@ import os
 import json
 import zipfile
 import requests
+import urllib.parse  # 🎯 FIXED: Explicitly added the missing module import
 from PIL import Image
 from io import BytesIO
 from internetarchive import upload
@@ -17,11 +18,10 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 MAX_WIDTH = 1024 
 JPEG_QUALITY = 70 
 
-# 🌐 CLOUDFLARE BYPASS LAYER: High-speed proxy that intercepts blocks on GitHub servers
+# 🌐 CLOUDFLARE BYPASS LAYER
 BASE_API_URL = "https://corsproxy.io"
 
 session = requests.Session()
-# Setup pristine headers mimicking a clean developer fetch instance
 session.headers.update({"User-Agent": "MangaWayCloudUploader/6.0 (Nintendo 3DS Portal)"})
 
 def main():
@@ -36,7 +36,6 @@ def main():
     for title in manga_queue:
         print(f"\n[🔍] Scanning Mirror Feed: {title}")
         try:
-            # Route requests through the open proxy to drop the line 1 column 1 crash
             manga_url = f"{BASE_API_URL}/manga?title={urllib.parse.quote(title)}&limit=1"
             res = session.get(manga_url, verify=False, timeout=20).json()
             results = res.get("data", [])
@@ -44,8 +43,10 @@ def main():
                 print(f"[-] No hits found for {title}")
                 continue
                 
-            manga_id = results[0]["id"]
-            official_title = results[0]["attributes"]["title"].get("en", title)
+            # Safely capture the first match if results is a list
+            manga_item = results[0] if isinstance(results, list) else results
+            manga_id = manga_item["id"]
+            official_title = manga_item["attributes"]["title"].get("en", title)
             print(f"[✔] Locked ID: {manga_id} ({official_title})")
             
             # Fetch English chapters using proxy streams
@@ -73,7 +74,6 @@ def main():
                 cbz_buffer = BytesIO()
                 with zipfile.ZipFile(cbz_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for i, page in enumerate(page_files):
-                        # Image download via unblocked pipeline
                         page_url = f"https://corsproxy.io{base_url}/data/{ch_hash}/{page}"
                         img_res = session.get(page_url, verify=False, timeout=15)
                         
@@ -92,7 +92,6 @@ def main():
                 with open(cbz_filename, "wb") as f:
                     f.write(cbz_buffer.getvalue())
                 
-                # Upload packet straight to your personal archive bucket
                 upload(IA_ARCHIVE_ID, files=[cbz_filename], access_key=IA_ACCESS_KEY, secret_key=IA_SECRET_KEY, verbose=False)
                 print(f"[🎉] Successfully uploaded: {cbz_filename}")
                 os.remove(cbz_filename)
