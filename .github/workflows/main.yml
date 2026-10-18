@@ -32,8 +32,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wget gdebi-core
         
-        # 🛡️ BYPASS CLOUDFLARE 403: Forziamo l'User-Agent simulando un browser reale
-        wget --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" https://devkitpro.org
+        # 🎯 LINK DIRETTO DEFINITIVO: Scarichiamo direttamente il file di sblocco ufficiale senza errori di reindirizzamento
+        wget --user-agent="Mozilla/5.0" https://github.com
         
         sudo gdebi -n devkitpro-keyring.deb
         echo "deb [signed-by=/usr/share/keyrings/devkitpro-keyring.gpg] https://apt.devkitpro.org/ ubuntu main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
