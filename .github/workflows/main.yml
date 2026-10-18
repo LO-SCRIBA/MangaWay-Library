@@ -29,15 +29,18 @@ jobs:
 
     - name: Install devkitPRO Tools (tex3ds)
       run: |
-        # Configura le repository di devkitPRO su Ubuntu per scaricare automaticamente tex3ds
         sudo apt-get update
         sudo apt-get install -y wget gdebi-core
-        wget https://devkitpro.org
+        
+        # 🛡️ BYPASS CLOUDFLARE 403: Forziamo l'User-Agent simulando un browser reale
+        wget --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" https://devkitpro.org
+        
         sudo gdebi -n devkitpro-keyring.deb
-        echo "deb [signed-by=/usr/share/keyrings/devkitpro-keyring.gpg] https://devkitpro.org ubuntu main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+        echo "deb [signed-by=/usr/share/keyrings/devkitpro-keyring.gpg] https://apt.devkitpro.org/ ubuntu main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
         sudo apt-get update
         sudo apt-get install -y 3ds-tools
-        # Aggiunge gli strumenti al PATH di sistema in modo che Python possa richiamarli
+        
+        # Aggiunge gli strumenti al PATH di sistema
         echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
 
     - name: Run MangaWay Compiler
@@ -49,7 +52,6 @@ jobs:
         git config --global user.name "MangaWay-Bot"
         git config --global user.email "bot@mangaway.store"
         
-        # Sincronizza il catalogo JSON e l'intera cartella delle copertine (JPG e T3X)
         git add catalog.json
         git add covers/* || echo "Nessuna copertina trovata in covers/"
         git add *.cbz || echo "Nessun file CBZ trovato"
