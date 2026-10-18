@@ -27,21 +27,21 @@ jobs:
       run: |
         pip install requests Pillow
 
-    - name: Install devkitPRO Tools (tex3ds)
+    - name: Build and Install tex3ds natively
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget gdebi-core
+        sudo apt-get install -y libpng-dev build-essential
         
-        # 🎯 LINK DIRETTO DEFINITIVO: Scarichiamo direttamente il file di sblocco ufficiale senza errori di reindirizzamento
-        wget --user-agent="Mozilla/5.0" https://github.com
+        # Scarichiamo il codice sorgente ufficiale dello strumento tex3ds di devkitPRO
+        git clone https://github.com/devkitPro/3dstools
+        cd tex3ds
         
-        sudo gdebi -n devkitpro-keyring.deb
-        echo "deb [signed-by=/usr/share/keyrings/devkitpro-keyring.gpg] https://apt.devkitpro.org/ ubuntu main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
-        sudo apt-get update
-        sudo apt-get install -y 3ds-tools
+        # Compiliamo l'eseguibile al volo sulla macchina virtuale
+        make
         
-        # Aggiunge gli strumenti al PATH di sistema
-        echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
+        # Lo spostiamo nella cartella dei binari di sistema in modo che Python possa usarlo ovunque
+        sudo cp tex3ds /usr/local/bin/
+        cd ..
 
     - name: Run MangaWay Compiler
       run: |
