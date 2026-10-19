@@ -11,7 +11,7 @@ from io import BytesIO
 GITHUB_USER = "LO-SCRIBA"
 GITHUB_REPO = "MangaWay-Library"
 
-IA_ARCHIVE_ID = "MANGAWAY"  # 🎯 Il tuo nuovo archivio pulito
+IA_ARCHIVE_ID = "MANGAWAY"  # 🎯 Il tuo nuovo archivio pulito e privo di file corrotti
 CATALOG_FILE = "catalog.json"
 COVERS_DIR = "covers"
 COVER_SIZE = (128, 256)
@@ -39,7 +39,7 @@ def parse_manga_filename(filename):
     Scompone il nome del file standard (es. berserk_vol1_ch0.cbz)
     per separare il titolo della serie dai dettagli del capitolo.
     """
-    # Rimuove l'estensione .cbz e pulisce
+    # Rimuove l'estensione .cbz e converte i caratteri
     base_name = filename.replace(".cbz", "")
     
     # Cerchiamo dove iniziano i tag di volume o capitolo per isolare la serie
@@ -67,14 +67,14 @@ def parse_manga_filename(filename):
     return manga_name, manga_id, chapter_title
 
 def main():
-    print(f"[*] Inizializzazione della Pipeline di compilazione Catalogo per l'archivio: {IA_ARCHIVE_ID}")
+    print(f"[*] Inizializzazione del Compilatore Catalogo ({__file__}) per l'archivio: {IA_ARCHIVE_ID}")
     if not os.path.exists(COVERS_DIR):
         os.makedirs(COVERS_DIR)
 
-    # 🌐 FIX CRITICO: Cambiato l'endpoint nell'API corretta di Internet Archive (/metadata/) per ricevere il JSON vero
+    # 🌐 FIX CRITICO: Endpoint corretto dell'API di Internet Archive (/metadata/) per ricevere l'albero vero dei file
     url_metadata = f"https://archive.org{IA_ARCHIVE_ID}"
     
-    # Struttura ad albero temporanea per il raggruppamento dinamico
+    # Struttura ad albero temporanea per il raggruppamento gerarchico delle serie
     series_map = {}
 
     try:
@@ -99,7 +99,7 @@ def main():
             # Genera gli URL stabili per i download e l'iniezione delle texture
             url_manga_grezzo = f"https://archive.org{IA_ARCHIVE_ID}/{filename}"
             url_manga_sicuro = urllib.parse.quote(url_manga_grezzo, safe=':/')
-            url_cover_3ds = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
+            url_cover_3ds = f"https://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/covers/{manga_id}.t3x"
             
             t3x_path = os.path.join(COVERS_DIR, f"{manga_id}.t3x")
 
@@ -111,7 +111,7 @@ def main():
                     with zipfile.ZipFile(BytesIO(cbz_res.content)) as z:
                         image_files = sorted([f for f in z.namelist() if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
                         if image_files:
-                            with z.open(image_files[0]) as first_page:
+                            with z.open(image_files) as first_page:
                                 img = Image.open(first_page)
                                 save_as_t3x(img, t3x_path)
 
@@ -145,7 +145,7 @@ def main():
     with open(CATALOG_FILE, "w", encoding="utf-8") as f_cat:
         json.dump(catalogo_finale, f_cat, indent=4, ensure_ascii=False)
         
-    print(f"\n[✔] CATALOGO COMPILATO CON SUCCESSO!")
+    print(f"\n[✔] CATALOGO COMPILATO CON SUCCESSO DA {__file__}!")
     print(f"[📊] Serie totali generate: {len(catalogo_finale)}")
     print(f"[📝] File pronto: '{CATALOG_FILE}' per il framework C++.")
 
