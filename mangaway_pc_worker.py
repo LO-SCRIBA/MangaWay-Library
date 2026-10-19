@@ -9,7 +9,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- TARGET CONFIGURATION ---
-IA_ARCHIVE_ID = "EMPTYFILE" 
+IA_ARCHIVE_ID = "MANGAWAY" 
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
