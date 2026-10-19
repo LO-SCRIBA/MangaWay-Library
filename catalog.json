@@ -1,1 +1,13 @@
-[]
+[
+    {
+        "manga_name": "That Time I Got Reincarnated As A Slime",
+        "cover_url": "https://githubusercontent.com",
+        "chapters": [
+            {
+                "title": "Ch.1",
+                "url_cbz": "https://archive.org/download/MANGAWAY/that_time_i_got_reincarnated_as_a_slime_vol0_ch1.cbz",
+                "filename": "that_time_i_got_reincarnated_as_a_slime_vol0_ch1.cbz"
+            }
+        ]
+    }
+]
