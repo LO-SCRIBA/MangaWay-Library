@@ -3,7 +3,7 @@ import zipfile
 import requests
 from PIL import Image
 from io import BytesIO
-from internetarchive import upload
+from internetarchive import upload, get_item
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -17,51 +17,36 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 MAX_WIDTH = 480 
 JPEG_QUALITY = 70 
 
-# 🌐 CORREZIONE CRITICA: Ripristinato l'endpoint API corretto per saltare i blocchi 404
+# 🌐 ENDPOINT API MANGADEX
 BASE_API_URL = "https://api.mangadex.org"
 
 session = requests.Session()
 session.headers.update({
-    "User-Agent": "MangaWayStore3DSWorker/4.0 (Nintendo 3DS Homebrew Link)"
+    "User-Agent": "MangaWayStore3DSWorker/5.0 (Nintendo 3DS Homebrew Link)"
 })
 
-def fetch_manga_id(title):
+def get_uploaded_archive_files():
     """
-    Cerca il manga su MangaDex ed applica un filtro a corrispondenza esatta 
-    sulla stringa del titolo per evitare opere derivate o scambi di nomi.
+    Recupera l'elenco dei file attualmente presenti su Internet Archive
+    per consentire il controllo dei duplicati in tempo reale.
     """
-    url = f"{BASE_API_URL}/manga"
-    params = {"title": title, "limit": 10}
-    clean_search = title.strip().lower()
+    print("[*] Recupero elenco file esistenti da Internet Archive...")
     try:
-        res = session.get(url, params=params, verify=False, timeout=15)
-        if res.status_code == 200:
-            results = res.json().get("data", [])
-            
-            # FILTRO DI CORRISPONDENZA ESATTA (Es. Cerca solo 'Berserk' e scarta il resto)
-            for manga_item in results:
-                manga_title_en = manga_item["attributes"]["title"].get("en", "").strip().lower()
-                if manga_title_en == clean_search:
-                    return manga_item["id"], manga_item["attributes"]["title"].get("en")
-            
-            # Fallback se non trova il match perfetto ma l'elenco contiene dati
-            if results:
-                return results[0]["id"], results[0]["attributes"]["title"].get("en", title)
-                
-        print(f"[-] Ricerca catalogo fallita. Status code: {res.status_code}")
+        item = get_item(IA_ARCHIVE_ID)
+        return {f['name'] for f in item.files}
     except Exception as e:
-        print(f"[-] Errore durante la ricerca di '{title}': {e}")
-    return None, None
+        print(f"[⚠️] Impossibile mappare l'archivio remoto ({e}). Procedo senza controllo storici.")
+        return set()
 
 def get_english_chapters(manga_id):
     """
-    Recupera i capitoli riducendo il limite a 20 per richiesta API
+    Recupera i capitoli tramite UUID statico riducendo il limite a 20 per richiesta API
     E applicando un blocco rigido a un totale massimo di 20 capitoli complessivi per serie.
     """
     all_chapters = []
     limit = 20  # Blocchi da 20 elementi per singola richiesta
     offset = 0
-    MAX_CAPITOLI_TOTALI = 20  # 🎯 IL TUO LIMITE: Cambia questo numero se in futuro vorrai scaricarne di più
+    MAX_CAPITOLI_TOTALI = 20  # 🎯 IL TUO LIMITE GIORNALIERO DI DOWNLOAD
     
     while True:
         # Costruiamo la stringa interamente a mano mantenendo le parentesi [] intatte e cruda
@@ -91,7 +76,7 @@ def get_english_chapters(manga_id):
                 
                 all_chapters.extend(data)
                 offset += limit
-                print(f"[#] Ottenuti {len(all_chapters)} / {total} capitoli inglesi...")
+                print(f"[#] Trovati {len(all_chapters)} / {total} capitoli totali su MangaDex...")
                 
                 # --- BLOCCO DI SICUREZZA RIGIDO ---
                 if len(all_chapters) >= MAX_CAPITOLI_TOTALI:
@@ -110,16 +95,22 @@ def get_english_chapters(manga_id):
             
     return all_chapters
 
-
-def process_and_compress_chapter(manga_title, chapter_data):
-    chapter_id = chapter_data["id"]
+def generate_cbz_filename(manga_title, chapter_data):
+    """
+    Genera il nome standardizzato del file CBZ a partire dai metadati del capitolo.
+    """
     attributes = chapter_data["attributes"]
     volume = attributes.get("volume") or "0"
     chapter_num = attributes.get("chapter") or "0"
-    
     clean_title = "".join([c if c.isalnum() else "_" for c in manga_title.lower()]).strip("_")
-    cbz_filename = f"{clean_title}_vol{volume}_ch{chapter_num}.cbz"
-    
+    return f"{clean_title}_vol{volume}_ch{chapter_num}.cbz"
+
+def process_and_compress_chapter(cbz_filename, chapter_data):
+    """
+    Scarica le pagine del capitolo, rimuove i canali alfa/trasparenza difettosi,
+    ridimensiona a 480p e compila il file .cbz ottimizzato.
+    """
+    chapter_id = chapter_data["id"]
     print(f"[*] Ottimizzazione ed elaborazione pagine -> {cbz_filename}...")
     
     try:
@@ -136,7 +127,9 @@ def process_and_compress_chapter(manga_title, chapter_data):
                 
                 if img_res.status_code == 200:
                     img = Image.open(BytesIO(img_res.content))
-                    if img.mode in ("RGBA", "P"):
+                    
+                    # 🧼 RISOLUZIONE BUG IMAGEMODE (Scala di grigi, Trasparenze e canali Alpha corrotti)
+                    if img.mode in ("RGBA", "LA", "P"):
                         img = img.convert("RGB")
                     
                     # 🎮 RIDIMENSIONAMENTO RIGIDO: Sotto i 480px di larghezza per la RAM del 3DS
@@ -151,42 +144,63 @@ def process_and_compress_chapter(manga_title, chapter_data):
         cbz_buffer.seek(0)
         with open(cbz_filename, "wb") as f:
             f.write(cbz_buffer.getvalue())
-        return cbz_filename
+        return True
     except Exception as e:
-        print(f"[-] Compressione fallita per il capitolo {chapter_num}: {e}")
-        return None
+        print(f"[-] Compressione fallita per il file {cbz_filename}: {e}")
+        return False
 
 def main():
     if not os.path.exists("lista_manga.txt"):
         with open("lista_manga.txt", "w", encoding="utf-8") as f:
-            f.write("Chainsaw Man\nBerserk\nMy Dress-Up Darling\nThe Quintessential Quintuplets\nLove of Kill\n")
-        print("[!] Creato il file lista_manga.txt. Inserisci i titoli al suo interno.")
+            f.write("# Inserisci i manga nel formato: Nome Manga | ID-MangaDex\n")
+            f.write("Berserk | e83c523e-51c8-4227-a9f1-a169b1bfb90e\n")
+            f.write("Chainsaw Man | a77742b1-c6a6-4dc0-83ae-d369b50bc6e9\n")
+            f.write("The Quintessential Quintuplets | b5b6631a-02f5-4cc1-94ef-d4cc56d4ba4e\n")
+        print("[!] Creato il nuovo file lista_manga.txt basato su ID univoci. Configuralo prima di avviare.")
         return
 
+    manga_queue = []
     with open("lista_manga.txt", "r", encoding="utf-8") as f:
-        manga_queue = [line.strip() for line in f if line.strip()]
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "|" in line:
+                parts = line.split("|")
+                manga_queue.append((parts[0].strip(), parts[1].strip()))
+            else:
+                print(f"[⚠️] Riga ignorata (Formato non valido, manca il carattere '|'): {line}")
 
-    for title in manga_queue:
-        print(f"\n[🔍] Scansione database per: {title}")
-        manga_id, official_title = fetch_manga_id(title)
+    if not manga_queue:
+        print("[-] Nessun manga valido inserito nella coda di download.")
+        return
+
+    # Mappa i file già esistenti su Internet Archive prima di iniziare la sessione
+    existing_files = get_uploaded_archive_files()
+
+    for official_title, manga_id in manga_queue:
+        print(f"\n[🔍] Inizio elaborazione serie tramite ID: {official_title} ({manga_id})")
         
-        if not manga_id:
-            continue
-            
-        print(f"[✔] Trovato (Corrispondenza Esatta): {official_title} (ID: {manga_id})")
         chapters = get_english_chapters(manga_id)
-        print(f"[+] Totale coda caricata: {len(chapters)} capitoli pronti per l'elaborazione.")
+        print(f"[+] Trovati {len(chapters)} capitoli pronti per il filtraggio storici.")
         
         for ch in chapters:
-            filename = process_and_compress_chapter(official_title, ch)
-            if filename:
+            filename = generate_cbz_filename(official_title, ch)
+            
+            # 🛑 CONTROLLO DUPLICATI: Se il file .cbz esiste già su IA, viene completamente saltato
+            if filename in existing_files:
+                print(f"[⏭] Capitolo già sincronizzato su Internet Archive. SALTO: {filename}")
+                continue
+                
+            success = process_and_compress_chapter(filename, ch)
+            if success:
                 try:
                     upload(IA_ARCHIVE_ID, files=[filename], access_key=IA_ACCESS_KEY, secret_key=IA_SECRET_KEY, verbose=False)
-                    print(f"[🎉] Pacchetto inviato all'Internet Archive: {filename}")
+                    print(f"[🎉] Pacchetto inviato con successo all'Internet Archive: {filename}")
                     os.remove(filename) 
+                    existing_files.add(filename) # Aggiorna la cache locale per i cicli successivi
                 except Exception as e:
                     print(f"[-] Errore di sincronizzazione cloud per {filename}: {e}")
 
 if __name__ == "__main__":
     main()
-
