@@ -10,7 +10,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- TARGET CONFIGURATION ---
-IA_ARCHIVE_ID = "MANGAWAYIA"  # 🎯 Il tuo archivio cloud immacolato
+IA_ARCHIVE_ID = "MANGAWAYIA"  
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
@@ -18,13 +18,11 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 MAX_WIDTH = 480 
 JPEG_QUALITY = 70 
 
-BASE_API_URL = "https://api.mangadex.org"
+# Direct endpoint and official backup proxy
+PRIMARY_API = "https://mangadex.org"
+PROXY_API = "https://mangadex.network" # Fallback proxy layer
 
 session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json"
-})
 
 def get_uploaded_archive_files():
     print(f"[*] Recupero elenco file esistenti da Internet Archive ({IA_ARCHIVE_ID})...")
@@ -36,14 +34,22 @@ def get_uploaded_archive_files():
         return set()
 
 def get_english_chapters(manga_id):
-    """Recupera i capitoli compilando manualmente l'URL cruda per aggirare i WAF di MangaDex"""
+    """Fetches chapters by cycling between official endpoints and proxy servers if GitHub is blocked"""
     all_chapters = []
     limit = 20  
     offset = 0
-    MAX_CAPITOLI_TOTALI = 20  # Quota giornaliera rigida per serie
+    MAX_CAPITOLI_TOTALI = 20  
     
+    # Clean real browser headers to look less like an automated python runner
+    browser_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://mangadex.org",
+        "Referer": "https://mangadex.org"
+    }
+
     while True:
-        # 🌐 BYPASS TOTALE DEL WAF: Stringa URL compilata a mano senza codifica esadecimale delle parentesi []
         raw_query = (
             f"translatedLanguage[]=en"
             f"&limit={limit}"
@@ -56,50 +62,45 @@ def get_english_chapters(manga_id):
             f"&contentRating[]=pornographic"
         )
         
-        feed_url = f"{BASE_API_URL}/manga/{manga_id}/feed?{raw_query}"
-        
+        # Test primary server, switch to proxy mirror dynamically if blocked
+        endpoints = [PRIMARY_API, PROXY_API]
         success = False
-        retries = 3
         
-        while retries > 0 and not success:
-            try:
-                # Delay preventivo anti Rate-Limit
-                time.sleep(1.5)
-                res = session.get(feed_url, verify=False, timeout=15)
-                
-                if res.status_code == 200:
-                    res_json = res.json()
-                    data = res_json.get("data", [])
-                    total = res_json.get("total", 0)
+        for base_url in endpoints:
+            feed_url = f"{base_url}/manga/{manga_id}/feed?{raw_query}"
+            retries = 2
+            
+            while retries > 0 and not success:
+                try:
+                    time.sleep(2.0) # Polite delay
+                    res = session.get(feed_url, headers=browser_headers, verify=False, timeout=15)
                     
-                    if not data:
-                        return all_chapters  
+                    if res.status_code == 200:
+                        res_json = res.json()
+                        data = res_json.get("data", [])
+                        total = res_json.get("total", 0)
                         
-                    all_chapters.extend(data)
-                    offset += limit
-                    print(f"[#] Estratti {len(all_chapters)} / {total} capitoli totali...")
-                    success = True
+                        all_chapters.extend(data)
+                        offset += limit
+                        print(f"[#] Estratti {len(all_chapters)} / {total} capitoli totali...")
+                        success = True
+                        
+                        if not data or len(all_chapters) >= MAX_CAPITOLI_TOTALI or len(all_chapters) >= total:
+                            return all_chapters[:MAX_CAPITOLI_TOTALI]
+                            
+                    elif res.status_code == 429:
+                        time.sleep(5.0)
+                        retries -= 1
+                    else:
+                        retries -= 1
+                except Exception:
+                    retries -= 1
                     
-                    if len(all_chapters) >= MAX_CAPITOLI_TOTALI:
-                        return all_chapters[:MAX_CAPITOLI_TOTALI]
-                    if len(all_chapters) >= total:
-                        return all_chapters
-                        
-                elif res.status_code == 429:
-                    print("[⏳] Rate Limit (429) rilevato. Attesa 5 secondi...")
-                    time.sleep(5.0)
-                    retries -= 1
-                else:
-                    print(f"[-] Errore risposta HTTP {res.status_code}. Riprovo...")
-                    time.sleep(2.0)
-                    retries -= 1
-            except Exception as e:
-                print(f"[⚠️] Blocco di rete o parsing ({e}). Tentativi rimasti: {retries-1}")
-                time.sleep(3.0)
-                retries -= 1
+            if success:
+                break # Succeeded on this endpoint layer, move to next batch offset
                 
         if not success:
-            print("[-] Impossibile recuperare il feed per questa serie.")
+            print("[-] Both primary database and proxy network endpoints are actively blocking this node instance.")
             break
             
     return all_chapters
@@ -112,40 +113,46 @@ def generate_cbz_filename(manga_title, chapter_data):
     return f"{clean_title}_vol{volume}_ch{chapter_num}.cbz"
 
 def process_and_compress_chapter(cbz_filename, chapter_data):
-    """Scarica e compila il file CBZ in modalità STORED (puro contenitore) per 3dslibris"""
     chapter_id = chapter_data["id"]
     print(f"[*] Ottimizzazione fisica su disco -> {cbz_filename}")
     
+    # Emulate real image reader browser request
+    img_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://mangadex.org"
+    }
+    
     try:
-        time.sleep(1.0)
-        server_res = session.get(f"{BASE_API_URL}/at-home/server/{chapter_id}", verify=False, timeout=15).json()
+        time.sleep(1.5)
+        # Try primary endpoint for image mapping server lookup
+        try:
+            server_res = session.get(f"{PRIMARY_API}/at-home/server/{chapter_id}", headers=img_headers, verify=False, timeout=15).json()
+        except:
+            # Proxy lookup fallback
+            server_res = session.get(f"{PROXY_API}/at-home/server/{chapter_id}", headers=img_headers, verify=False, timeout=15).json()
+            
         base_url = server_res["baseUrl"]
         chapter_hash = server_res["chapter"]["hash"]
         page_files = server_res["chapter"]["data"]
         
-        # 🎮 PURE UNCOMPRESSED CBZ: Scrittura diretta su blocco fisico
         with zipfile.ZipFile(cbz_filename, 'w', zipfile.ZIP_STORED) as zip_file:
             for i, page in enumerate(page_files):
                 page_url = f"{base_url}/data/{chapter_hash}/{page}"
                 
-                time.sleep(0.3)
-                img_res = session.get(page_url, verify=False, timeout=15)
+                time.sleep(0.4)
+                img_res = session.get(page_url, headers=img_headers, verify=False, timeout=15)
                 
                 if img_res.status_code == 200:
                     img = Image.open(BytesIO(img_res.content))
-                    
                     if img.mode in ("RGBA", "LA", "P"):
                         img = img.convert("RGB")
                     
-                    # Ridimensionamento hardware rigido a 480p di larghezza
                     if img.width > MAX_WIDTH:
                         ratio = MAX_WIDTH / float(img.width)
                         img = img.resize((MAX_WIDTH, int(img.height * ratio)), Image.Resampling.LANCZOS)
                     
                     page_buffer = BytesIO()
                     img.save(page_buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-                    
-                    # 🎮 ZERO PADDING 3 CIFRE: Mantiene l'ordine alfabetico binario nativo su 3DS
                     zip_file.writestr(f"{i+1:03d}.jpg", page_buffer.getvalue())
                     
         if os.path.exists(cbz_filename) and os.path.getsize(cbz_filename) > 0:
@@ -170,7 +177,6 @@ def main():
                 continue
             if "|" in line:
                 parts = line.split("|")
-                # 🎮 FIX CRITICO: Applica .strip() ai singoli puntatori stringa dentro l'array, non alla lista complessiva
                 manga_queue.append((parts[0].strip(), parts[1].strip()))
 
     if not manga_queue:
