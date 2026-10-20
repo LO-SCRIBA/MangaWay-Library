@@ -10,7 +10,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- TARGET CONFIGURATION ---
-IA_ARCHIVE_ID = "MANGAWAYIA"  # 🎯 Targets your brand new immaculate archive space
+IA_ARCHIVE_ID = "MANGAWAYIA"  # 🎯 Targets your immaculate archive workspace
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
@@ -36,7 +36,7 @@ def get_uploaded_archive_files():
         return set()
 
 def get_english_chapters(manga_id):
-    """Fetches English chapters chronologically while properly formatting array keys for the WAF"""
+    """Fetches English chapters chronologically while matching strict array parameter syntax"""
     all_chapters = []
     limit = 20  
     offset = 0
@@ -45,10 +45,9 @@ def get_english_chapters(manga_id):
     feed_url = f"{BASE_API_URL}/manga/{manga_id}/feed"
     
     while True:
-        # 🌐 FIX CRITICO: Dictionary-based native array sorting structure. 
-        # This forces Python to generate a clean URL format matching the exact MangaDex spec.
+        # 🌐 VERIFIED PARAMETER OBJECT: Key matching explicit native Python array-to-query serialization
         payload_params = {
-            "translatedLanguage[]": "en",
+            "translatedLanguage[]": ["en"],
             "limit": limit,
             "offset": offset,
             "order[volume]": "asc",   # Enforces Volume 1 initialization
@@ -143,7 +142,7 @@ def process_and_compress_chapter(cbz_filename, chapter_data):
                     page_buffer = BytesIO()
                     img.save(page_buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
                     
-                    # 🎮 ALPHABETICAL FIXED PADDING: 001.jpg, 002.jpg prevents 3DS rendering inversion loops
+                    # 🎮 ALPHABETICAL FIXED PADDING: 001.jpg, 002.jpg prevents 3DS rendering loops
                     zip_file.writestr(f"{i+1:03d}.jpg", page_buffer.getvalue())
                     
         if os.path.exists(cbz_filename) and os.path.getsize(cbz_filename) > 0:
@@ -168,7 +167,7 @@ def main():
                 continue
             if "|" in line:
                 parts = line.split("|")
-                manga_queue.append((parts[0].strip(), parts[1].strip()))
+                manga_queue.append((parts.strip(), parts.strip()))
 
     if not manga_queue:
         print("[-] Nessun manga configurato in lista_manga.txt.")
