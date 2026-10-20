@@ -43,10 +43,11 @@ def get_english_chapters(manga_id):
     MAX_CAPITOLI_TOTALI = 20  # Quota giornaliera rigida per serie
     
     # 🌐 STRUTTURA PARAMETRI PULITA: Passaggio tramite tuple per evitare duplicazioni o encoding anomali delle parentesi []
-    payload_params = [
+       payload_params = [
         ("translatedLanguage[]", "en"),
         ("limit", str(limit)),
-        ("order[chapter]", "asc"),
+        ("order[volume]", "asc"),   // 👈 FORCE VOLUME STARTING ORDER
+        ("order[chapter]", "asc"),  // 👈 FORCE CHAPTER STARTING ORDER
         ("contentRating[]", "safe"),
         ("contentRating[]", "suggestive"),
         ("contentRating[]", "erotica"),
@@ -113,25 +114,24 @@ def generate_cbz_filename(manga_title, chapter_data):
     return f"{clean_title}_vol{volume}_ch{chapter_num}.cbz"
 
 def process_and_compress_chapter(cbz_filename, chapter_data):
-    """Costruisce il file CBZ in modalità STORED (nessuna compressione) leggibile da 3dslibris"""
+    """Downloads, resizes, and writes images directly to a physical file to ensure uncorrupted ZIP headers"""
     chapter_id = chapter_data["id"]
-    print(f"[*] Elaborazione e ridimensionamento immagini -> {cbz_filename}")
+    print(f"[*] Physical extraction and hardware crunching -> {cbz_filename}")
     
     try:
-        # Richiesta dell'endpoint di hosting delle immagini
+        # Fetch the server hosting image structure
         time.sleep(1.0)
         server_res = session.get(f"{BASE_API_URL}/at-home/server/{chapter_id}", verify=False, timeout=15).json()
         base_url = server_res["baseUrl"]
         chapter_hash = server_res["chapter"]["hash"]
         page_files = server_res["chapter"]["data"]
         
-        cbz_buffer = BytesIO()
-        # 🎮 HARDWARE LOCK: ZIP_STORED per azzerare lo sforzo di decompressione della CPU del 3DS
-        with zipfile.ZipFile(cbz_buffer, 'w', zipfile.ZIP_STORED) as zip_file:
+        # 🎮 DIRECT FILE WRITE FIX: We write directly to disk instead of using memory buffers (BytesIO).
+        # This forces the OS to write a clean, uncorrupted central directory header that 3dslibris can read.
+        with zipfile.ZipFile(cbz_filename, 'w', zipfile.ZIP_STORED) as zip_file:
             for i, page in enumerate(page_files):
                 page_url = f"{base_url}/data/{chapter_hash}/{page}"
                 
-                # Download della singola pagina con piccolo delay anti-ban
                 time.sleep(0.3)
                 img_res = session.get(page_url, verify=False, timeout=15)
                 
@@ -141,7 +141,7 @@ def process_and_compress_chapter(cbz_filename, chapter_data):
                     if img.mode in ("RGBA", "LA", "P"):
                         img = img.convert("RGB")
                     
-                    # Ridimensionamento nativo rigido a 480p di larghezza massima per la VRAM
+                    # Strict 480p width crunching for Old 3DS VRAM preservation
                     if img.width > MAX_WIDTH:
                         ratio = MAX_WIDTH / float(img.width)
                         img = img.resize((MAX_WIDTH, int(img.height * ratio)), Image.Resampling.LANCZOS)
@@ -149,15 +149,17 @@ def process_and_compress_chapter(cbz_filename, chapter_data):
                     page_buffer = BytesIO()
                     img.save(page_buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
                     
-                    # 🎮 ALPHABETIC PADDING: Struttura a 3 cifre (001.jpg, 002.jpg) per bloccare i bug di lettura del 3DS
+                    # 🎮 THREE-DIGIT PADDING: Preserves binary alphabetical sorting (001.jpg, 002.jpg)
                     zip_file.writestr(f"{i+1:03d}.jpg", page_buffer.getvalue())
                     
-        cbz_buffer.seek(0)
-        with open(cbz_filename, "wb") as f:
-            f.write(cbz_buffer.getvalue())
-        return True
+        # Verify the file actually exists and has content before letting the script continue
+        if os.path.exists(cbz_filename) and os.path.getsize(cbz_filename) > 0:
+            return True
+        return False
     except Exception as e:
-        print(f"[-] Elaborazione hardware fallita per {cbz_filename}: {e}")
+        print(f"[-] Hardware optimization failed for {cbz_filename}: {e}")
+        if os.path.exists(cbz_filename):
+            os.remove(cbz_filename)
         return False
 
 def main():
