@@ -42,12 +42,12 @@ def get_english_chapters(manga_id):
     offset = 0
     MAX_CAPITOLI_TOTALI = 20  # Quota giornaliera rigida per serie
     
-    # 🌐 STRUTTURA PARAMETRI PULITA: Passaggio tramite tuple per evitare duplicazioni o encoding anomali delle parentesi []
-       payload_params = [
+    # 🌐 STRUTTURA PARAMETRI PULITA: Passaggio tramite tuple per evitare duplicazioni o encoding anomali
+    payload_params = [
         ("translatedLanguage[]", "en"),
         ("limit", str(limit)),
-        ("order[volume]", "asc"),   // 👈 FORCE VOLUME STARTING ORDER
-        ("order[chapter]", "asc"),  // 👈 FORCE CHAPTER STARTING ORDER
+        ("order[volume]", "asc"),
+        ("order[chapter]", "asc"),
         ("contentRating[]", "safe"),
         ("contentRating[]", "suggestive"),
         ("contentRating[]", "erotica"),
@@ -105,6 +105,7 @@ def get_english_chapters(manga_id):
             break
             
     return all_chapters
+
 
 def generate_cbz_filename(manga_title, chapter_data):
     attributes = chapter_data["attributes"]
