@@ -18,7 +18,7 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 MAX_WIDTH = 480 
 JPEG_QUALITY = 70 
 
-BASE_API_URL = "https://api.mangadex.org"
+BASE_API_URL = "https://mangadex.org"
 
 session = requests.Session()
 session.headers.update({
@@ -167,7 +167,8 @@ def main():
                 continue
             if "|" in line:
                 parts = line.split("|")
-                manga_queue.append((parts.strip(), parts.strip()))
+                # 🎮 FIX CRITICO: Strip strings inside the list items directly using array index pointers
+                manga_queue.append((parts[0].strip(), parts[1].strip()))
 
     if not manga_queue:
         print("[-] Nessun manga configurato in lista_manga.txt.")
