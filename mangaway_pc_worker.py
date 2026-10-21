@@ -3,7 +3,6 @@ import sys
 import time
 import zipfile
 import requests
-from internetarchive import upload, get_item, download
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -12,15 +11,10 @@ IA_ARCHIVE_ID = "MANGAWAYIA"
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
-# 🌐 USIAMO LA CORRETTA STRUTTURA DEL REINDIRIZZAMENTO API
 BASE_API_URL = "https://mangadex.org"
 INDEX_FILE_NAME = "last_processed_index.txt"
 
-os.environ["IA_ACCESS_KEY"] = IA_ACCESS_KEY
-os.environ["IA_SECRET_KEY"] = IA_SECRET_KEY
-
 session = requests.Session()
-# 📑 INTEGRAZIONE REQUISITI BROWSER: Maschera completamente le richieste simulate provenienti dai nodi Cloud di GitHub
 session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -29,8 +23,31 @@ session.headers.update({
     "Referer": "https://mangadex.org"
 })
 
+def upload_to_ia(filename):
+    """Carica un file su Internet Archive usando le API HTTP native (S3-compatible) con timeout"""
+    print(f"[*] Uploading {filename} to Internet Archive via HTTP S3...", flush=True)
+    url = f"https://archive.org/{IA_ARCHIVE_ID}/{filename}"
+    headers = {
+        "Authorization": f"LOW {IA_ACCESS_KEY}:{IA_SECRET_KEY}",
+        "Content-Type": "application/octet-stream"
+    }
+    try:
+        with open(filename, "rb") as f:
+            file_data = f.read()
+        
+        # Timeout rigido di 60 secondi per l'upload di file corposi
+        res = requests.put(url, headers=headers, data=file_data, timeout=60)
+        if res.status_code == 200:
+            print(f"[🎉] HTTP Upload successful: {filename}", flush=True)
+            return True
+        else:
+            print(f"[-] HTTP Upload failed (Status {res.status_code}) for {filename}", flush=True)
+    except Exception as e:
+        print(f"[-] Exception during HTTP Upload for {filename}: {e}", flush=True)
+    return False
+
 def get_uploaded_archive_files():
-    print(f"[*] Fetching remote file list from Internet Archive ({IA_ARCHIVE_ID})...", flush=True)
+    print(f"[*] Fetching remote file list from Internet Archive Metadata API...", flush=True)
     try:
         catalog_url = f"https://archive.org/{IA_ARCHIVE_ID}"
         res = session.get(catalog_url, timeout=15)
@@ -38,58 +55,36 @@ def get_uploaded_archive_files():
             files_data = res.json().get("files", [])
             return {f['name'] for f in files_data}
     except Exception as e:
-        print(f"[⚠️] Unable to map remote archive via API ({e}). Trying backup method...", flush=True)
-        
-    try:
-        item = get_item(IA_ARCHIVE_ID)
-        return {f['name'] for f in item.files}
-    except Exception as e:
-        print(f"[⚠️] Internet Archive connection failed entirely ({e}). Proceeding without history check.", flush=True)
-        return set()
+        print(f"[⚠️] Unable to map remote archive via API ({e}). Proceeding without history check.", flush=True)
+    return set()
 
 def get_last_processed_index():
-    print(f"[*] Checking for progress state file ({INDEX_FILE_NAME}) on cloud...", flush=True)
-    if os.path.exists(INDEX_FILE_NAME):
-        os.remove(INDEX_FILE_NAME)
-        
+    print(f"[*] Checking for progress state file ({INDEX_FILE_NAME}) on cloud via HTTP...", flush=True)
     try:
-        index_url = f"https://archive.org/{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
+        index_url = f"https://archive.org{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
         res = session.get(index_url, timeout=10)
         if res.status_code == 200:
             index = int(res.text.strip())
             print(f"[+] Resuming from manga index: {index}", flush=True)
             return index
     except Exception as e:
-        print(f"[⚠️] HTTP state check omitted ({e}). Trying fallback download...", flush=True)
-
-    try:
-        download(IA_ARCHIVE_ID, files=[INDEX_FILE_NAME], destdir=".", ignore_errors=True, timeout=10)
-        if os.path.exists(INDEX_FILE_NAME):
-            with open(INDEX_FILE_NAME, "r", encoding="utf-8") as f:
-                index = int(f.read().strip())
-                print(f"[+] Resuming from manga index via fallback: {index}", flush=True)
-                return index
-    except Exception as e:
-        print(f"[⚠️] No progress state found or error reading it ({e}). Starting from 0.", flush=True)
+        print(f"[⚠️] Progress state file not found or unreadable ({e}). Starting from 0.", flush=True)
     return 0
 
 def save_last_processed_index(index):
     print(f"[*] Saving current progress index ({index}) to cloud...", flush=True)
     with open(INDEX_FILE_NAME, "w", encoding="utf-8") as f:
         f.write(str(index))
-    try:
-        upload(IA_ARCHIVE_ID, files=[INDEX_FILE_NAME], access_key=IA_ACCESS_KEY, secret_key=IA_SECRET_KEY, verbose=False, retries=3)
-        if os.path.exists(INDEX_FILE_NAME):
-            os.remove(INDEX_FILE_NAME)
-    except Exception as e:
-        print(f"[-] Failed to upload state file to cloud: {e}", flush=True)
+    
+    success = upload_to_ia(INDEX_FILE_NAME)
+    if success and os.path.exists(INDEX_FILE_NAME):
+        os.remove(INDEX_FILE_NAME)
 
 def get_english_chapters(manga_id):
     all_chapters = []
     limit = 100
     offset = 0
     
-    # Costruiamo i dizionari nativi dei parametri per evitare incompatibilità strutturali
     payload_params = {
         "translatedLanguage[]": "en",
         "limit": str(limit),
@@ -102,12 +97,10 @@ def get_english_chapters(manga_id):
     
     while True:
         try:
-            time.sleep(1.0) # Ritardo di sicurezza aumentato per eludere i controlli anti-bot automatizzati
+            time.sleep(1.0)
             payload_params["offset"] = str(offset)
-            
             res = session.get(raw_url, params=payload_params, verify=False, timeout=15)
             
-            # Se l'API principale fallisce o è bloccata, proviamo a usare lo specchio alternativo proxy
             if res.status_code != 200:
                 print(f"[⚠️] Primary API blocked (Status {res.status_code}). Triggering CORS Proxy fallback...", flush=True)
                 backup_url = f"https://allorigins.win{requests.utils.quote(raw_url + '?translatedLanguage[]=en&limit=' + str(limit) + '&offset=' + str(offset) + '&order[chapter]=asc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic')}"
@@ -168,7 +161,7 @@ def download_raw_cbz(cbz_filename, chapter_id):
         return False
 
 def main():
-    print("[*] Launching MangaWay Cloud Sync...", flush=True)
+    print("[*] Launching Pure HTTP MangaWay Cloud Sync...", flush=True)
     if not os.path.exists("lista_manga.txt"):
         print("[-] Error: file lista_manga.txt not found.", flush=True)
         return
@@ -222,14 +215,12 @@ def main():
             success = download_raw_cbz(filename, ch["id"])
             
             if success:
-                try:
-                    upload(IA_ARCHIVE_ID, files=[filename], access_key=IA_ACCESS_KEY, secret_key=IA_SECRET_KEY, verbose=False, retries=3)
-                    print(f"[🎉] Sent package to Internet Archive: {filename}", flush=True)
+                uploaded = upload_to_ia(filename)
+                if uploaded:
                     os.remove(filename) 
                     existing_files.add(filename)
                     uploaded_count += 1
-                except Exception as e:
-                    print(f"[-] Cloud sync error for {filename}: {e}", flush=True)
+                else:
                     if os.path.exists(filename): 
                         os.remove(filename)
 
@@ -237,3 +228,7 @@ def main():
 
     new_index = end_index if end_index < len(manga_queue) else 0
     save_last_processed_index(new_index)
+    print(f"\n[🏁] Batch processing completed. Next run will start from index: {new_index}", flush=True)
+
+if __name__ == "__main__":
+    main()
