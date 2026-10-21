@@ -24,4 +24,4 @@ jobs:
         pip install requests internetarchive urllib3
 
     - name: Execute synchronization pipeline
-      run: python mangaway_worker.py
+      run: python mangaway_pc_worker.py
