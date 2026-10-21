@@ -27,7 +27,7 @@ def get_uploaded_archive_files():
     print(f"[*] Fetching remote file list from Internet Archive ({IA_ARCHIVE_ID})...", flush=True)
     try:
         # FIX: Aggiunto lo slash corretto prima dell'ID archivio
-        catalog_url = f"https://archive.org{IA_ARCHIVE_ID}"
+        catalog_url = f"https://archive.org/{IA_ARCHIVE_ID}"
         res = session.get(catalog_url, timeout=15)
         if res.status_code == 200:
             files_data = res.json().get("files", [])
@@ -49,7 +49,7 @@ def get_last_processed_index():
         
     try:
         # FIX: Aggiunto lo slash corretto prima di scaricare l'indice
-        index_url = f"https://archive.org{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
+        index_url = f"https://archive.org/{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
         res = session.get(index_url, timeout=10)
         if res.status_code == 200:
             index = int(res.text.strip())
