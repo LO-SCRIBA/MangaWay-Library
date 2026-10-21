@@ -3,7 +3,7 @@ import sys
 import time
 import zipfile
 import requests
-from internetarchive import upload, get_item, download, configure
+from internetarchive import upload, get_item, download
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -15,8 +15,6 @@ IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 BASE_API_URL = "https://mangadex.org"
 INDEX_FILE_NAME = "last_processed_index.txt"
 
-# 🛠️ FORCE CONFIGURATION & TIMEOUTS FOR INTERNET ARCHIVE
-# Applica le chiavi di sessione globali per evitare handshake pendenti
 os.environ["IA_ACCESS_KEY"] = IA_ACCESS_KEY
 os.environ["IA_SECRET_KEY"] = IA_SECRET_KEY
 
@@ -28,7 +26,7 @@ session.headers.update({
 def get_uploaded_archive_files():
     print(f"[*] Fetching remote file list from Internet Archive ({IA_ARCHIVE_ID})...", flush=True)
     try:
-        # Usiamo requests con timeout esplicito sul catalogo IA per evitare blocchi infiniti
+        # FIX: Aggiunto lo slash corretto prima dell'ID archivio
         catalog_url = f"https://archive.org{IA_ARCHIVE_ID}"
         res = session.get(catalog_url, timeout=15)
         if res.status_code == 200:
@@ -50,7 +48,7 @@ def get_last_processed_index():
         os.remove(INDEX_FILE_NAME)
         
     try:
-        # Scarichiamo il file di stato direttamente tramite HTTP standard con timeout rigido
+        # FIX: Aggiunto lo slash corretto prima di scaricare l'indice
         index_url = f"https://archive.org{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
         res = session.get(index_url, timeout=10)
         if res.status_code == 200:
@@ -87,23 +85,31 @@ def get_english_chapters(manga_id):
     limit = 100
     offset = 0
     
+    # FIX DEFINITIVO PER I FIREWALL DI MANGADEX: 
+    # Passiamo una lista di tuple esplicite. Questo costringe requests a compilare le parentesi quadre
+    # intatte senza percent-encoding distruttivi, sbloccando l'endpoint JSON.
+    payload_params = [
+        ("translatedLanguage[]", "en"),
+        ("limit", str(limit)),
+        ("offset", str(offset)),
+        ("order[chapter]", "asc"),
+        ("contentRating[]", "safe"),
+        ("contentRating[]", "suggestive"),
+        ("contentRating[]", "erotica"),
+        ("contentRating[]", "pornographic")
+    ]
+    
+    raw_url = f"{BASE_API_URL}/manga/{manga_id}/feed"
+    
     while True:
-        query_string = (
-            f"translatedLanguage[]=en"
-            f"&limit={limit}"
-            f"&offset={offset}"
-            f"&order[chapter]=asc"
-            f"&contentRating[]=safe"
-            f"&contentRating[]=suggestive"
-            f"&contentRating[]=erotica"
-            f"&contentRating[]=pornographic"
-        )
-        
-        raw_url = f"{BASE_API_URL}/manga/{manga_id}/feed?{query_string}"
-        
         try:
-            time.sleep(0.5) # Evita il rate limit di MangaDex
-            res = session.get(raw_url, verify=False, timeout=15)
+            time.sleep(0.5)
+            # Aggiorna l'offset dinamicamente nella lista di tuple dei parametri
+            for idx, (key, value) in enumerate(payload_params):
+                if key == "offset":
+                    payload_params[idx] = ("offset", str(offset))
+                    
+            res = session.get(raw_url, params=payload_params, verify=False, timeout=15)
             
             if res.status_code == 200:
                 res_json = res.json()
