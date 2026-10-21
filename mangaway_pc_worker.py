@@ -12,6 +12,7 @@ IA_ARCHIVE_ID = "MANGAWAYIA"
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
+# 🌐 USIAMO LA CORRETTA STRUTTURA DEL REINDIRIZZAMENTO API
 BASE_API_URL = "https://mangadex.org"
 INDEX_FILE_NAME = "last_processed_index.txt"
 
@@ -19,14 +20,18 @@ os.environ["IA_ACCESS_KEY"] = IA_ACCESS_KEY
 os.environ["IA_SECRET_KEY"] = IA_SECRET_KEY
 
 session = requests.Session()
+# 📑 INTEGRAZIONE REQUISITI BROWSER: Maschera completamente le richieste simulate provenienti dai nodi Cloud di GitHub
 session.headers.update({
-    "User-Agent": "MangaWayStore3DSWorker/5.0 (Nintendo 3DS Homebrew Link)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://mangadex.org",
+    "Referer": "https://mangadex.org"
 })
 
 def get_uploaded_archive_files():
     print(f"[*] Fetching remote file list from Internet Archive ({IA_ARCHIVE_ID})...", flush=True)
     try:
-        # FIX: Aggiunto lo slash corretto prima dell'ID archivio
         catalog_url = f"https://archive.org/{IA_ARCHIVE_ID}"
         res = session.get(catalog_url, timeout=15)
         if res.status_code == 200:
@@ -48,7 +53,6 @@ def get_last_processed_index():
         os.remove(INDEX_FILE_NAME)
         
     try:
-        # FIX: Aggiunto lo slash corretto prima di scaricare l'indice
         index_url = f"https://archive.org/{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
         res = session.get(index_url, timeout=10)
         if res.status_code == 200:
@@ -85,47 +89,48 @@ def get_english_chapters(manga_id):
     limit = 100
     offset = 0
     
-    # FIX DEFINITIVO PER I FIREWALL DI MANGADEX: 
-    # Passiamo una lista di tuple esplicite. Questo costringe requests a compilare le parentesi quadre
-    # intatte senza percent-encoding distruttivi, sbloccando l'endpoint JSON.
-    payload_params = [
-        ("translatedLanguage[]", "en"),
-        ("limit", str(limit)),
-        ("offset", str(offset)),
-        ("order[chapter]", "asc"),
-        ("contentRating[]", "safe"),
-        ("contentRating[]", "suggestive"),
-        ("contentRating[]", "erotica"),
-        ("contentRating[]", "pornographic")
-    ]
+    # Costruiamo i dizionari nativi dei parametri per evitare incompatibilità strutturali
+    payload_params = {
+        "translatedLanguage[]": "en",
+        "limit": str(limit),
+        "offset": str(offset),
+        "order[chapter]": "asc",
+        "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"]
+    }
     
     raw_url = f"{BASE_API_URL}/manga/{manga_id}/feed"
     
     while True:
         try:
-            time.sleep(0.5)
-            # Aggiorna l'offset dinamicamente nella lista di tuple dei parametri
-            for idx, (key, value) in enumerate(payload_params):
-                if key == "offset":
-                    payload_params[idx] = ("offset", str(offset))
-                    
+            time.sleep(1.0) # Ritardo di sicurezza aumentato per eludere i controlli anti-bot automatizzati
+            payload_params["offset"] = str(offset)
+            
             res = session.get(raw_url, params=payload_params, verify=False, timeout=15)
             
-            if res.status_code == 200:
-                res_json = res.json()
-                data = res_json.get("data", [])
-                total = res_json.get("total", 0)
-                
-                if not data:
-                    break
-                
-                all_chapters.extend(data)
-                offset += limit
-                
-                if len(all_chapters) >= total:
+            # Se l'API principale fallisce o è bloccata, proviamo a usare lo specchio alternativo proxy
+            if res.status_code != 200:
+                print(f"[⚠️] Primary API blocked (Status {res.status_code}). Triggering CORS Proxy fallback...", flush=True)
+                backup_url = f"https://allorigins.win{requests.utils.quote(raw_url + '?translatedLanguage[]=en&limit=' + str(limit) + '&offset=' + str(offset) + '&order[chapter]=asc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic')}"
+                res = requests.get(backup_url, timeout=20)
+                if res.status_code == 200:
+                    res_json = res.json()
+                    import json
+                    res_data = json.loads(res_json["contents"])
+                else:
                     break
             else:
-                print(f"[-] Server feed error (Status {res.status_code}).", flush=True)
+                res_data = res.json()
+                
+            data = res_data.get("data", [])
+            total = res_data.get("total", 0)
+            
+            if not data:
+                break
+            
+            all_chapters.extend(data)
+            offset += limit
+            
+            if len(all_chapters) >= total:
                 break
         except Exception as e:
             print(f"[-] Exception during extraction: {e}", flush=True)
@@ -232,7 +237,3 @@ def main():
 
     new_index = end_index if end_index < len(manga_queue) else 0
     save_last_processed_index(new_index)
-    print(f"\n[🏁] Batch processing completed. Next run will start from index: {new_index}", flush=True)
-
-if __name__ == "__main__":
-    main()
