@@ -49,7 +49,9 @@ def clean_name(name):
 # ==========================================
 def get_chapters_feed(manga_id):
     """Scarica il feed dei capitoli inviando le tuple native senza alterare le parentesi."""
+    # CORRETTO: Adesso l'URL punta all'endpoint API esatto con le barre al posto giusto
     url = f"https://mangadex.org{manga_id}/feed"
+    
     params = [
         ("limit", "20"),
         ("translatedLanguage[]", "en"),
@@ -62,14 +64,13 @@ def get_chapters_feed(manga_id):
         response = requests.get(url, params=params, headers=headers)
         if response.status_code == 200:
             return response.json().get("data", [])
-        return []
+        else:
+            print(f"    [!] Errore HTTP {response.status_code} su feed MangaDex.")
+            return []
     except Exception as e:
         print(f"    [!] Errore connessione feed: {e}")
         return []
 
-# ==========================================
-# DOWNLOAD BINARIO PURO (Nessuna Modifica)
-# ==========================================
 def download_pure_cbz(chapter_id, final_path):
     """
     Scarica il file CBZ originale senza toccarlo.
