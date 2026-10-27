@@ -1,234 +1,170 @@
 import os
-import sys
-import time
-import zipfile
+import re
 import requests
-import urllib3
+from internetarchive import get_item
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+# ==========================================
+# CONFIGURAZIONE COORDINATE CLOUD & LOCALI
+# ==========================================
 IA_ARCHIVE_ID = "MANGAWAYIA"
 IA_ACCESS_KEY = "Lqt9jGuSMWjbRyQU"
 IA_SECRET_KEY = "YS2wwTS4rsL1q98w"
 
-BASE_API_URL = "https://mangadex.org"
-INDEX_FILE_NAME = "last_processed_index.txt"
-
-session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Origin": "https://mangadex.org",
-    "Referer": "https://mangadex.org"
-})
-
-def upload_to_ia(filename):
-    """Carica un file su Internet Archive usando le API HTTP native (S3-compatible) con timeout"""
-    print(f"[*] Uploading {filename} to Internet Archive via HTTP S3...", flush=True)
-    url = f"https://archive.org/{IA_ARCHIVE_ID}/{filename}"
-    headers = {
-        "Authorization": f"LOW {IA_ACCESS_KEY}:{IA_SECRET_KEY}",
-        "Content-Type": "application/octet-stream"
+IA_CONFIG = {
+    "s3": {
+        "access": IA_ACCESS_KEY,
+        "secret": IA_SECRET_KEY
     }
+}
+
+LISTA_MANGA_FILE = "lista_manga.txt"
+OUTPUT_DIR = "mangaway_downloads"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# ==========================================
+# SINCRO CONTROL: EVITIAMO DI RISCARICARE
+# ==========================================
+def get_remote_existing_files():
+    """Interroga Internet Archive e scarica la lista dei file già presenti."""
+    print(f"[*] Controllo file esistenti in remoto su {IA_ARCHIVE_ID}...")
     try:
-        with open(filename, "rb") as f:
-            file_data = f.read()
+        item = get_item(IA_ARCHIVE_ID)
+        cbz_files = {f["name"] for f in item.files if f["name"].endswith(".cbz")}
+        print(f"[+] Trovati {len(cbz_files)} file .cbz già archiviati.")
+        return cbz_files
+    except Exception as e:
+        print(f"[!] Accesso a Internet Archive fallito ({e}). Procedo a coda vuota.")
+        return set()
+
+# ==========================================
+# UTILITY FILENAME
+# ==========================================
+def clean_name(name):
+    """Rende il nome riconoscibile e pulito per il file system."""
+    name = name.lower().replace(" ", "_")
+    return re.sub(r"[^a-z0-9__\-]", "", name)
+
+# ==========================================
+# FEED SCRAPER (Fix Parentesi Quadre)
+# ==========================================
+def get_chapters_feed(manga_id):
+    """Scarica il feed dei capitoli inviando le tuple native senza alterare le parentesi."""
+    url = f"https://mangadex.org{manga_id}/feed"
+    params = [
+        ("limit", "20"),
+        ("translatedLanguage[]", "en"),
+        ("order[chapter]", "asc"),
+        ("includeExternalUrl", "0")
+    ]
+    headers = {"User-Agent": "MangaWay3DSWorker/1.0"}
+    
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        if response.status_code == 200:
+            return response.json().get("data", [])
+        return []
+    except Exception as e:
+        print(f"    [!] Errore connessione feed: {e}")
+        return []
+
+# ==========================================
+# DOWNLOAD BINARIO PURO (Nessuna Modifica)
+# ==========================================
+def download_pure_cbz(chapter_id, final_path):
+    """
+    Scarica il file CBZ originale senza toccarlo.
+    Se MangaDex non espone direttamente il pacchetto compilato, 
+    preleva lo stream binario grezzo delle tavole sequenziali dal server at-home.
+    """
+    # Nota: MangaDex non distribuisce direttamente file .cbz pronti dalle API pubbliche, 
+    # ma espone l'endpoint "at-home" per aggregare i flussi immagine originali (senza compressione).
+    # Questo modulo li unisce in un archivio raw binario non alterato.
+    import zipfile
+    url = f"https://mangadex.org{chapter_id}"
+    try:
+        res = requests.get(url)
+        if res.status_code != 200: return False
         
-        # Timeout rigido di 60 secondi per l'upload di file corposi
-        res = requests.put(url, headers=headers, data=file_data, timeout=60)
-        if res.status_code == 200:
-            print(f"[🎉] HTTP Upload successful: {filename}", flush=True)
-            return True
-        else:
-            print(f"[-] HTTP Upload failed (Status {res.status_code}) for {filename}", flush=True)
-    except Exception as e:
-        print(f"[-] Exception during HTTP Upload for {filename}: {e}", flush=True)
-    return False
-
-def get_uploaded_archive_files():
-    print(f"[*] Fetching remote file list from Internet Archive Metadata API...", flush=True)
-    try:
-        catalog_url = f"https://archive.org/{IA_ARCHIVE_ID}"
-        res = session.get(catalog_url, timeout=15)
-        if res.status_code == 200:
-            files_data = res.json().get("files", [])
-            return {f['name'] for f in files_data}
-    except Exception as e:
-        print(f"[⚠️] Unable to map remote archive via API ({e}). Proceeding without history check.", flush=True)
-    return set()
-
-def get_last_processed_index():
-    print(f"[*] Checking for progress state file ({INDEX_FILE_NAME}) on cloud via HTTP...", flush=True)
-    try:
-        index_url = f"https://archive.org{IA_ARCHIVE_ID}/{INDEX_FILE_NAME}"
-        res = session.get(index_url, timeout=10)
-        if res.status_code == 200:
-            index = int(res.text.strip())
-            print(f"[+] Resuming from manga index: {index}", flush=True)
-            return index
-    except Exception as e:
-        print(f"[⚠️] Progress state file not found or unreadable ({e}). Starting from 0.", flush=True)
-    return 0
-
-def save_last_processed_index(index):
-    print(f"[*] Saving current progress index ({index}) to cloud...", flush=True)
-    with open(INDEX_FILE_NAME, "w", encoding="utf-8") as f:
-        f.write(str(index))
-    
-    success = upload_to_ia(INDEX_FILE_NAME)
-    if success and os.path.exists(INDEX_FILE_NAME):
-        os.remove(INDEX_FILE_NAME)
-
-def get_english_chapters(manga_id):
-    all_chapters = []
-    limit = 100
-    offset = 0
-    
-    payload_params = {
-        "translatedLanguage[]": "en",
-        "limit": str(limit),
-        "offset": str(offset),
-        "order[chapter]": "asc",
-        "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"]
-    }
-    
-    raw_url = f"{BASE_API_URL}/manga/{manga_id}/feed"
-    
-    while True:
-        try:
-            time.sleep(1.0)
-            payload_params["offset"] = str(offset)
-            res = session.get(raw_url, params=payload_params, verify=False, timeout=15)
-            
-            if res.status_code != 200:
-                print(f"[⚠️] Primary API blocked (Status {res.status_code}). Triggering CORS Proxy fallback...", flush=True)
-                backup_url = f"https://allorigins.win{requests.utils.quote(raw_url + '?translatedLanguage[]=en&limit=' + str(limit) + '&offset=' + str(offset) + '&order[chapter]=asc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic')}"
-                res = requests.get(backup_url, timeout=20)
-                if res.status_code == 200:
-                    res_json = res.json()
-                    import json
-                    res_data = json.loads(res_json["contents"])
-                else:
-                    break
-            else:
-                res_data = res.json()
-                
-            data = res_data.get("data", [])
-            total = res_data.get("total", 0)
-            
-            if not data:
-                break
-            
-            all_chapters.extend(data)
-            offset += limit
-            
-            if len(all_chapters) >= total:
-                break
-        except Exception as e:
-            print(f"[-] Exception during extraction: {e}", flush=True)
-            break
-            
-    return all_chapters
-
-def download_raw_cbz(cbz_filename, chapter_id):
-    try:
-        time.sleep(0.5)
-        res = session.get(f"{BASE_API_URL}/at-home/server/{chapter_id}", verify=False, timeout=15)
-        if res.status_code != 200:
-            return False
-            
-        server_res = res.json()
-        base_url = server_res["baseUrl"]
-        chapter_hash = server_res["chapter"]["hash"]
-        page_files = server_res["chapter"]["data"]
+        data = res.json()
+        base_url = data.get("baseUrl")
+        chapter_data = data.get("chapter", {})
+        hash_code = chapter_data.get("hash")
+        pages = chapter_data.get("data")
         
-        with zipfile.ZipFile(cbz_filename, 'w', zipfile.ZIP_STORED) as zip_file:
-            for i, page in enumerate(page_files):
-                page_url = f"{base_url}/data/{chapter_hash}/{page}"
-                
-                time.sleep(0.3)
-                img_res = session.get(page_url, verify=False, timeout=15)
-                
+        if not base_url or not hash_code or not pages: return False
+
+        # Creazione del contenitore puro (STORED = Nessun re-encoding, nessuna alterazione byte)
+        with zipfile.ZipFile(final_path, "w", zipfile.ZIP_STORED) as cbz:
+            for i, page in enumerate(pages):
+                page_url = f"{base_url}/data/{hash_code}/{page}"
+                img_res = requests.get(page_url, stream=True)
                 if img_res.status_code == 200:
-                    zip_file.writestr(f"{i+1:03d}.jpg", img_res.content)
-                    
-        return os.path.exists(cbz_filename) and os.path.getsize(cbz_filename) > 0
+                    ext = page.split(".")[-1]
+                    cbz.writestr(f"{i+1:03d}.{ext}", img_res.content)
+        return True
     except Exception as e:
-        print(f"[-] Download failed for chapter {cbz_filename}: {e}", flush=True)
-        if os.path.exists(cbz_filename):
-            os.remove(cbz_filename)
+        print(f"        [!] Errore download binario: {e}")
         return False
 
+# ==========================================
+# CLOUD UPLOAD VIA S3 TOKENS
+# ==========================================
+def upload_to_ia(file_path, file_name):
+    """Carica il file intonso direttamente su Internet Archive."""
+    print(f"    [*] Uploading {file_name} in corso...")
+    try:
+        item = get_item(IA_ARCHIVE_ID)
+        r = item.upload({file_name: file_path}, config=IA_CONFIG, verbose=False)
+        return r.status_code == 200
+    except Exception as e:
+        print(f"    [!] Errore upload: {e}")
+        return False
+
+# ==========================================
+# MAIN EXECUTION
+# ==========================================
 def main():
-    print("[*] Launching Pure HTTP MangaWay Cloud Sync...", flush=True)
-    if not os.path.exists("lista_manga.txt"):
-        print("[-] Error: file lista_manga.txt not found.", flush=True)
+    if not os.path.exists(LISTA_MANGA_FILE):
+        print(f"[!] Errore: Manca il file {LISTA_MANGA_FILE}")
         return
 
-    manga_queue = []
-    with open("lista_manga.txt", "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.replace("\r", "").replace("\n", "").strip()
-            if not line or line.startswith("#"):
-                continue
-            if "|" in line:
-                parts = line.split("|")
-                manga_queue.append((parts[0].strip(), parts[1].strip()))
+    remote_files = get_remote_existing_files()
 
-    if not manga_queue:
-        print("[-] No manga configured inside lista_manga.txt", flush=True)
-        return
+    with open(LISTA_MANGA_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
 
-    start_index = get_last_processed_index()
-    if start_index >= len(manga_queue):
-        print("[*] Reached the end of the manga list in previous runs. Resetting index to 0.", flush=True)
-        start_index = 0
-
-    end_index = start_index + 20
-    chunk_to_process = manga_queue[start_index:end_index]
-    
-    print(f"[*] Processing chunk from index {start_index} to {min(end_index, len(manga_queue))} (Total items: {len(chunk_to_process)})", flush=True)
-
-    existing_files = get_uploaded_archive_files()
-
-    for official_title, manga_id in chunk_to_process:
-        print(f"\n[🔍] Scanning database for: {official_title} (ID: {manga_id})", flush=True)
+    for line in lines:
+        if not line.strip() or "|" not in line: continue
         
-        chapters = get_english_chapters(manga_id)
-        print(f"[+] Total queue loaded: {len(chapters)} chapters ready for processing.", flush=True)
+        manga_name, manga_id = map(str.strip, line.split("|"))
+        manga_slug = clean_name(manga_name)
         
-        uploaded_count = 0
+        print(f"\n[*] Controllo serie: {manga_name}")
+        chapters = get_chapters_feed(manga_id)
         
         for ch in chapters:
-            attributes = ch["attributes"]
-            volume = attributes.get("volume") or "0"
-            chapter_num = attributes.get("chapter") or "0"
+            attrs = ch.get("attributes", {})
+            vol = f"vol{attrs.get('volume')}" if attrs.get('volume') else "vol0"
+            cap = f"ch{attrs.get('chapter')}" if attrs.get('chapter') else "ch0"
             
-            clean_title = "".join([c if c.isalnum() else "_" for c in official_title.lower()]).strip("_")
-            filename = f"{clean_title}_vol{volume}_ch{chapter_num}.cbz"
-            
-            if filename in existing_files:
+            # Formato nome super riconoscibile: nome_manga_vol0_ch1.cbz
+            cbz_name = f"{manga_slug}_{vol}_{cap}.cbz"
+            local_path = os.path.join(OUTPUT_DIR, cbz_name)
+
+            if cbz_name in remote_files:
+                print(f"    [-] Saltato: {cbz_name} già presente.")
                 continue
-                
-            print(f"[*] Downloading raw chapter: {chapter_num} -> {filename}", flush=True)
-            success = download_raw_cbz(filename, ch["id"])
-            
-            if success:
-                uploaded = upload_to_ia(filename)
-                if uploaded:
-                    os.remove(filename) 
-                    existing_files.add(filename)
-                    uploaded_count += 1
+
+            print(f"    [+] Nuovo capitolo trovato! Scarico in: {cbz_name}")
+            if download_pure_cbz(ch.get("id"), local_path):
+                if upload_to_ia(local_path, cbz_name):
+                    print(f"    [+] Sincronizzato con successo: {cbz_name}")
+                    remote_files.add(cbz_name)
                 else:
-                    if os.path.exists(filename): 
-                        os.remove(filename)
-
-        print(f"[✔] Sync complete for {official_title}. New chapters uploaded: {uploaded_count}", flush=True)
-
-    new_index = end_index if end_index < len(manga_queue) else 0
-    save_last_processed_index(new_index)
-    print(f"\n[🏁] Batch processing completed. Next run will start from index: {new_index}", flush=True)
+                    print(f"    [!] Errore nel caricamento cloud di {cbz_name}")
+            else:
+                print(f"    [!] Errore nel download di {cbz_name}")
+                if os.path.exists(local_path): os.remove(local_path)
 
 if __name__ == "__main__":
     main()
